@@ -38,6 +38,11 @@ const schema = z.object({
   SARVAM_STT_MODEL: z.string().default("saarika:v2"),
   SARVAM_TTS_MODEL: z.string().default("bulbul:v2"),
 
+  ELEVENLABS_API_KEY: z.string().optional(),
+  /** "Rachel" — a clear, neutral default from the shared voice library. */
+  ELEVENLABS_VOICE_ID: z.string().default("21m00Tcm4TlvDq8ikWAM"),
+  ELEVENLABS_MODEL: z.string().default("eleven_turbo_v2_5"),
+
   PEXELS_API_KEY: z.string().optional(),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
@@ -74,6 +79,7 @@ export const integrations = {
   huggingFace: () => Boolean(process.env.HF_TOKEN),
   openai: () => Boolean(process.env.OPENAI_API_KEY),
   sarvam: () => Boolean(process.env.SARVAM_API_KEY),
+  elevenLabs: () => Boolean(process.env.ELEVENLABS_API_KEY),
   cloudinary: () =>
     Boolean(
       process.env.CLOUDINARY_CLOUD_NAME &&

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mail, Phone, Sparkles, UserRound } from "lucide-react";
+import { AccountForm } from "@/components/buyer/AccountForm";
 import { Badge, LinkButton } from "@/components/ui";
 import { connectDB } from "@/server/lib/db";
 import { getSession } from "@/server/middleware/session";
@@ -73,6 +74,12 @@ export default async function BuyerProfilePage() {
             </div>
           </div>
         </dl>
+
+        <AccountForm
+          name={user.name}
+          phone={user.phone ?? ""}
+          email={user.email}
+        />
       </section>
 
       <section className="mt-6 rounded-card border border-line bg-surface p-5 sm:p-6">

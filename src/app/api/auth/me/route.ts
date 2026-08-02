@@ -1,7 +1,10 @@
+import type { NextRequest } from "next/server";
 import { connectDB } from "@/server/lib/db";
 import { ok, route } from "@/server/lib/api";
-import { getSession } from "@/server/middleware/session";
+import { getSession, requireAuth } from "@/server/middleware/session";
 import { User } from "@/server/models";
+import { updateBuyerAccount } from "@/server/services/profile.service";
+import { buyerAccountSchema } from "@/server/validators/profile";
 
 export const runtime = "nodejs";
 
@@ -30,4 +33,17 @@ export const GET = route(async () => {
       buyerPreferences: user.buyerPreferences ?? null,
     },
   });
+});
+
+/**
+ * PATCH /api/auth/me — edit your own account.
+ *
+ * The id comes from the cookie, never the body, so this can only ever write
+ * the caller's own record. Email is not editable: it is the login identity and
+ * changing it needs a verification flow this prototype does not have.
+ */
+export const PATCH = route(async (req: NextRequest) => {
+  const session = await requireAuth();
+  const input = buyerAccountSchema.parse(await req.json());
+  return ok({ user: await updateBuyerAccount(session.sub, input) });
 });

@@ -251,6 +251,22 @@ const SUPPLIER_ANSWERS = {
   check("/buyer/profile renders", p.status === 200, p.status);
   check("profile shows the account email", p.html.includes(buyer.email));
 
+  r = await call("PATCH", "/api/auth/me", {
+    name: "Journey Buyer Renamed",
+    phone: "+91 90000 00000",
+  });
+  check("buyer can edit their account -> 200", r.status === 200, r.payload);
+  check("name updated", r.payload?.data?.user?.name === "Journey Buyer Renamed");
+  check("phone updated", r.payload?.data?.user?.phone === "+91 90000 00000");
+
+  r = await call("PATCH", "/api/auth/me", { name: "x" });
+  check("too-short name -> 422", r.status === 422, r.status);
+
+  // A partial edit must not clear the field it did not mention.
+  r = await call("PATCH", "/api/auth/me", { phone: "" });
+  check("clearing the phone keeps the name", r.payload?.data?.user?.name === "Journey Buyer Renamed", r.payload?.data?.user);
+  check("cleared phone reads as absent", !r.payload?.data?.user?.phone, r.payload?.data?.user?.phone);
+
   console.log("\n== every link a signed-in buyer can click ==");
   /**
    * Exactly the hrefs in Navbar and Footer. A signed-in buyer clicking any of
@@ -342,6 +358,43 @@ const SUPPLIER_ANSWERS = {
   });
   check("over-long message -> 422", r.status === 422, r.status);
 
+  console.log("\n== text to speech ==");
+  /**
+   * Premium voice is optional infrastructure. Configured, this returns MPEG;
+   * unconfigured it must return a clean 503 so the browser falls back to
+   * speechSynthesis. A 500 here would be a real failure — it would mean the
+   * client had no way to tell "use the local voice" from "something broke".
+   */
+  {
+    const res = await attempt(() =>
+      fetch(BASE + "/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookieHeader() },
+        body: JSON.stringify({ text: "Combed cotton poplin, one twenty GSM." }),
+      }),
+    );
+    const type = res.headers.get("content-type") || "";
+    const configured = res.status === 200;
+
+    check(
+      configured ? "premium voice returns audio" : "premium voice degrades to 503",
+      configured ? type.includes("audio") : res.status === 503,
+      { status: res.status, type },
+    );
+    if (configured) {
+      const bytes = (await res.arrayBuffer()).byteLength;
+      check("audio payload is non-trivial", bytes > 1000, bytes);
+    } else {
+      console.log("        ELEVENLABS_API_KEY not set — browser voice is the fallback");
+    }
+  }
+
+  r = await call("POST", "/api/tts", { text: "" });
+  check("empty tts text -> 422", r.status === 422, r.status);
+
+  r = await call("POST", "/api/tts", { text: "x".repeat(1200) });
+  check("over-long tts text -> 422", r.status === 422, r.status);
+
   console.log("\n== in-page links ==");
   // Not in the nav, but on the two most travelled pages in the journey.
   const anyProduct = (await call("GET", "/api/products?limit=1")).payload?.data?.products?.[0];
@@ -405,6 +458,49 @@ const SUPPLIER_ANSWERS = {
     got: r.payload?.data?.user?.profile?.slug,
   });
 
+  console.log("\n== supplier profile editing ==");
+  r = await call("GET", "/api/supplier/profile");
+  check("profile readable -> 200", r.status === 200, r.payload);
+
+  r = await call("PATCH", "/api/supplier/profile", {
+    contactPhone: "+91 91234 56789",
+    operatingHours: {
+      monday: { open: "08:30", close: "19:00", closed: false },
+      tuesday: { open: "08:30", close: "19:00", closed: false },
+      wednesday: { open: "08:30", close: "19:00", closed: false },
+      thursday: { open: "08:30", close: "19:00", closed: false },
+      friday: { open: "08:30", close: "19:00", closed: false },
+      saturday: { open: "09:00", close: "14:00", closed: false },
+      sunday: { open: "09:00", close: "18:00", closed: true },
+    },
+  });
+  check("profile edit -> 200", r.status === 200, r.payload);
+  check("phone updated", r.payload?.data?.profile?.contactPhone === "+91 91234 56789");
+  check(
+    "per-day hours stored",
+    r.payload?.data?.profile?.operatingHours?.saturday?.close === "14:00",
+    r.payload?.data?.profile?.operatingHours?.saturday,
+  );
+  check(
+    "a partial edit leaves the business name alone",
+    r.payload?.data?.profile?.businessName === SUPPLIER_ANSWERS.businessName,
+    r.payload?.data?.profile?.businessName,
+  );
+  check(
+    "renaming never moves the storefront slug",
+    r.payload?.data?.profile?.slug === slug,
+    r.payload?.data?.profile?.slug,
+  );
+
+  r = await call("PATCH", "/api/supplier/profile", { contactPhone: "nope" });
+  check("invalid phone -> 422", r.status === 422, r.status);
+
+  r = await call("PATCH", "/api/supplier/profile", {
+    businessName: "Journey Mills Renamed",
+  });
+  check("rename applies", r.payload?.data?.profile?.businessName === "Journey Mills Renamed");
+  check("slug still unchanged after rename", r.payload?.data?.profile?.slug === slug, r.payload?.data?.profile?.slug);
+
   console.log("\n== supplier console ==");
   for (const href of [
     "/supplier",
@@ -412,6 +508,7 @@ const SUPPLIER_ANSWERS = {
     "/supplier/products/new",
     "/supplier/orders",
     "/supplier/profile",
+    "/supplier/profile/edit",
   ]) {
     const res = await attempt(() =>
       fetch(BASE + href, { headers: { Cookie: cookieHeader() }, redirect: "follow" }),

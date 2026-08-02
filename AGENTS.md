@@ -42,7 +42,7 @@ npm run smoke            # all three suites (needs dev server running)
 
 Smoke suites live in `scripts/` and assert against a live server:
 `smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56),
-`smoke:journey` (104). **229 assertions, all passing as of the last commit.**
+`smoke:journey` (123). **248 assertions, all passing as of the last commit.**
 They create throwaway accounts, supplier profiles and orders, and mutate data;
 that is fine for a prototype.
 
@@ -164,6 +164,19 @@ one-line summary, an 8B model echoes it back verbatim instead of answering.
 `[n]` markers are stripped from the reply server-side — a rule not to echo them
 holds most of the time, and most of the time is not a standard worth shipping.
 
+**Text to speech is premium-first with a real fallback.** ElevenLabs runs
+through our own `/api/tts` because the key bills per character and must never
+reach the browser. The client treats *any* failure — unconfigured, 401, quota,
+timeout, autoplay policy — as "use `speechSynthesis`", so an exhausted quota
+mid-demo costs voice quality, not voice. `/api/tts` answers 503 rather than 500
+for exactly that reason: the client has to be able to tell "fall back" from
+"something broke". The panel names which voice actually spoke.
+
+**Onboarding writes the whole record; the profile editors write fields.** Both
+hit the same documents. `validators/profile.ts` carries no defaults, so a PATCH
+never clears what it did not mention, and a rename never re-derives the
+storefront slug — every product page already links to it.
+
 **Ownership is enforced inside query filters**, so another supplier's id matches
 nothing and 404s rather than partially writing. An order that is not yours
 returns the same 404 as one that does not exist, so order numbers cannot be
@@ -207,9 +220,12 @@ flash. Prices use `.tnum` so digits do not jitter.
 committed template. Vercel holds the same values **except** `NODE_ENV` (Vercel
 sets it; overriding it breaks the production build).
 
-Verified working: MongoDB Atlas, Hugging Face (chat 1.4s, embeddings 296ms/384d),
-Cloudinary (free plan), Pexels (25k/month). Untested: Redis, Sarvam, OpenAI
-fallback.
+Verified working: MongoDB Atlas, Hugging Face (embeddings 296ms/384d; grounded
+assistant replies land in 6–8s, since the prompt now carries six retrieved
+products), Cloudinary (free plan), Pexels (25k/month). Untested: Redis, Sarvam,
+OpenAI fallback, **ElevenLabs — no key is set, so `/api/tts` returns 503 and
+the browser voice is what actually speaks.** Add `ELEVENLABS_API_KEY` to switch
+it on; nothing else changes.
 
 `MONGODB_URI` points at a cluster shared with another project, isolated by
 `MONGODB_DB=textile_marketplace`. Atlas Network Access must allow `0.0.0.0/0`
@@ -241,7 +257,12 @@ inventory CRUD with browser-direct image upload, order management driving
 `ORDER_STATUS_FLOW`, and the business profile. The AI assistant covers all
 seven asks in the brief: conversational chat, voice both ways, natural-language
 search, recommendations personalised from `buyerPreferences`, comparison,
-similar products and per-product Q&A.
+similar products and per-product Q&A. Both roles can edit their own profile —
+the buyer their account, the supplier the full business record including
+per-day opening hours.
+
+Every requirement in `../Tast.md` is implemented. What is left is verification,
+not construction.
 
 **Both roles are clickable end to end.** `smoke:journey` sweeps every href in
 the Navbar, Footer and supplier console and fails on any non-200; add to those

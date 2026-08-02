@@ -204,7 +204,13 @@ export function Assistant() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-ink">Sourcing assistant</p>
             <p className="truncate text-[11px] text-ink-subtle">
-              {productSlug ? "Asking about this fabric" : "Grounded in the live catalog"}
+              {speech.enabled && speech.voice
+                ? speech.voice === "premium"
+                  ? "Speaking · premium voice"
+                  : "Speaking · browser voice"
+                : productSlug
+                  ? "Asking about this fabric"
+                  : "Grounded in the live catalog"}
             </p>
           </div>
 

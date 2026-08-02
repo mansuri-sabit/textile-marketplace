@@ -100,7 +100,7 @@ export default async function SupplierProfilePage() {
             <ExternalLink className="size-3.5" />
           </Link>
           <Link
-            href="/supplier/onboarding"
+            href="/supplier/profile/edit"
             className="inline-flex items-center gap-1.5 text-sm text-indigo-600 underline-offset-2 hover:underline"
           >
             <Pencil className="size-3.5" />
