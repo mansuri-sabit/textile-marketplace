@@ -11,7 +11,9 @@
     "seed": "node --env-file=.env --import tsx scripts/seed.ts",
     "seed:verify": "node --env-file=.env --import tsx scripts/verify-seed.ts",
     "smoke:auth": "node scripts/smoke-auth.cjs",
-    "smoke:products": "node scripts/smoke-products.cjs"
+    "smoke:products": "node scripts/smoke-products.cjs",
+    "smoke:commerce": "node scripts/smoke-commerce.cjs",
+    "smoke": "npm run smoke:auth && npm run smoke:products && npm run smoke:commerce"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

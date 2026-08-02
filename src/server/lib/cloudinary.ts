@@ -15,6 +15,40 @@ function configure() {
   configured = true;
 }
 
+/**
+ * Credentials for a browser-direct upload.
+ *
+ * The file goes straight from the browser to Cloudinary rather than through a
+ * route handler — which sidesteps the serverless request body limit entirely
+ * and keeps a large image off the function's memory. The secret never leaves
+ * the server; only a short-lived signature does.
+ */
+export function signUpload(): {
+  signature: string;
+  timestamp: number;
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+} {
+  configure();
+  const e = env();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = e.CLOUDINARY_UPLOAD_FOLDER;
+
+  const signature = cloudinary.utils.api_sign_request(
+    { timestamp, folder },
+    e.CLOUDINARY_API_SECRET as string,
+  );
+
+  return {
+    signature,
+    timestamp,
+    apiKey: e.CLOUDINARY_API_KEY as string,
+    cloudName: e.CLOUDINARY_CLOUD_NAME as string,
+    folder,
+  };
+}
+
 export type UploadedImage = { url: string; publicId: string };
 
 /**
