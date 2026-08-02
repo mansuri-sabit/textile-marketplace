@@ -241,6 +241,18 @@ const SUPPLIER_ANSWERS = {
   p = await page("/orders/TM-DOESNOTEXIST");
   check("unknown order number -> 404", p.status === 404, p.status);
 
+  /**
+   * A buyer never gets a direct line to a supplier — the briefing video is
+   * explicit that supplier details must not be exposed to buyers. These check
+   * the payloads, not the rendered page, so a future component cannot
+   * reintroduce it from data that was still being sent.
+   */
+  r = await call("GET", `/api/orders/${orderNumber}`);
+  const orderJson = JSON.stringify(r.payload);
+  check("order payload carries no supplier email", !orderJson.includes("contactEmail"), "contactEmail present");
+  check("order payload carries no supplier phone", !orderJson.includes("contactPhone"), "contactPhone present");
+  check("but the supplier is still named", Boolean(r.payload?.data?.order?.supplier?.businessName));
+
   console.log("\n== buyer dashboard ==");
   p = await page("/buyer");
   check("/buyer renders", p.status === 200, p.status);
@@ -350,6 +362,48 @@ const SUPPLIER_ANSWERS = {
   check("comparison mode engaged", r.payload?.data?.mode === "compare", r.payload?.data?.mode);
   check("both fabrics retrieved", r.payload?.data?.products?.length === 2, r.payload?.data?.products?.length);
 
+  /**
+   * Agentic add to cart. The model proposes by index; the server resolves it,
+   * re-checks MOQ and stock through the ordinary cart service, and reports what
+   * actually happened. A question must never trigger it.
+   */
+  r = await call("POST", "/api/assistant", {
+    messages: [
+      { role: "user", content: "add 500 metres of the best lightweight cotton shirting to my cart" },
+    ],
+  });
+  const added = r.payload?.data?.action;
+  check("assistant adds to the cart on request", added?.type === "added_to_cart", added);
+  check("it added a real quantity", added?.quantity >= 1, added?.quantity);
+
+  r = await call("GET", "/api/cart");
+  check(
+    "the cart really changed",
+    r.payload?.data?.items?.some((i) => i.name === added?.product),
+    r.payload?.data?.items?.map((i) => i.name),
+  );
+
+  r = await call("POST", "/api/assistant", {
+    messages: [
+      { role: "user", content: "what is the difference between poplin and oxford weave?" },
+    ],
+  });
+  check(
+    "a plain question never touches the cart",
+    r.payload?.data?.action === undefined,
+    r.payload?.data?.action,
+  );
+
+  r = await call("POST", "/api/assistant", {
+    messages: [{ role: "user", content: "tell me about the supplier of that fabric" }],
+  });
+  check("supplier questions are answerable", (r.payload?.data?.reply ?? "").length > 20);
+  check(
+    "the assistant never hands out supplier contact details",
+    !/@[a-z0-9.-]+\.[a-z]{2,}|\+91[\s0-9-]{8,}/i.test(r.payload?.data?.reply ?? ""),
+    r.payload?.data?.reply,
+  );
+
   r = await call("POST", "/api/assistant", { messages: [] });
   check("empty conversation -> 422", r.status === 422, r.status);
 
@@ -410,6 +464,13 @@ const SUPPLIER_ANSWERS = {
 
   p = await page("/suppliers/not-a-real-supplier");
   check("unknown supplier storefront -> 404", p.status === 404, p.status);
+
+  r = await call("GET", `/api/suppliers/${anyProduct.supplier.slug}`);
+  const storefrontJson = JSON.stringify(r.payload);
+  check("public storefront hides supplier email", !storefrontJson.includes("contactEmail"), "contactEmail present");
+  check("public storefront hides supplier phone", !storefrontJson.includes("contactPhone"), "contactPhone present");
+  check("public storefront hides GST", !storefrontJson.includes("gstNumber"), "gstNumber present");
+  check("storefront still shows the business", Boolean(r.payload?.data?.supplier?.businessName));
 
   console.log("\n== cross-role guards ==");
   r = await call("POST", "/api/supplier/onboarding", SUPPLIER_ANSWERS);

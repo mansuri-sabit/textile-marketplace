@@ -69,45 +69,65 @@ async function complete(
  * provider could answer. Callers are expected to catch that and fall back to
  * something useful rather than surfacing an error to the buyer.
  */
+export type ChatProvider = "huggingface" | "openai";
+
+/**
+ * Tries the configured primary, then the other one. Which is primary is an env
+ * switch (`AI_CHAT_PRIMARY`): OpenAI reaches first token faster, which shows on
+ * a live demo, while Hugging Face is the open-source path the brief prefers.
+ * Embeddings and semantic search are Hugging Face either way — the open-source
+ * model does the retrieval that every answer is grounded in.
+ */
 export async function chat(
   messages: ChatMessage[],
   opts: { maxTokens?: number } = {},
-): Promise<{ text: string; provider: "huggingface" | "openai" }> {
+): Promise<{ text: string; provider: ChatProvider }> {
   const e = env();
   const maxTokens = opts.maxTokens ?? 400;
 
-  if (integrations.huggingFace()) {
+  const providers: Record<
+    ChatProvider,
+    { available: boolean; url: string; key?: string; model: string }
+  > = {
+    openai: {
+      available: integrations.openai(),
+      url: OPENAI_CHAT_URL,
+      key: e.OPENAI_API_KEY,
+      model: e.OPENAI_MODEL,
+    },
+    huggingface: {
+      available: integrations.huggingFace(),
+      url: HF_CHAT_URL,
+      key: e.HF_TOKEN,
+      model: e.HF_CHAT_MODEL,
+    },
+  };
+
+  const order: ChatProvider[] =
+    e.AI_CHAT_PRIMARY === "openai"
+      ? ["openai", "huggingface"]
+      : ["huggingface", "openai"];
+
+  let lastError = "No chat provider configured";
+
+  for (const name of order) {
+    const provider = providers[name];
+    if (!provider.available) continue;
+
     try {
       const text = await complete(
-        HF_CHAT_URL,
-        e.HF_TOKEN as string,
-        e.HF_CHAT_MODEL,
+        provider.url,
+        provider.key as string,
+        provider.model,
         messages,
         maxTokens,
       );
-      return { text, provider: "huggingface" };
+      return { text, provider: name };
     } catch (err) {
-      console.warn(`[chat] Hugging Face failed: ${(err as Error).message}`);
-      if (!integrations.openai()) {
-        throw new ChatUnavailableError((err as Error).message);
-      }
+      lastError = (err as Error).message;
+      console.warn(`[chat] ${name} failed: ${lastError}`);
     }
   }
 
-  if (!integrations.openai()) {
-    throw new ChatUnavailableError("No chat provider configured");
-  }
-
-  try {
-    const text = await complete(
-      OPENAI_CHAT_URL,
-      e.OPENAI_API_KEY as string,
-      e.OPENAI_MODEL,
-      messages,
-      maxTokens,
-    );
-    return { text, provider: "openai" };
-  } catch (err) {
-    throw new ChatUnavailableError((err as Error).message);
-  }
+  throw new ChatUnavailableError(lastError);
 }

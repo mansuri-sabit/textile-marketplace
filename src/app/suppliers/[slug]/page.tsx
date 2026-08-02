@@ -5,11 +5,8 @@ import {
   ArrowLeft,
   BadgeCheck,
   Clock,
-  ExternalLink,
-  Mail,
   MapPin,
   PackageSearch,
-  Phone,
   Star,
 } from "lucide-react";
 import { ProductCard } from "@/components/buyer/ProductCard";
@@ -157,41 +154,15 @@ export default async function SupplierStorefrontPage({
         </div>
 
         <aside className="w-full shrink-0 space-y-3 rounded-card border border-line bg-surface p-5 sm:w-72">
-          <div className="space-y-2 text-sm">
-            {supplier.contactEmail && (
-              <a
-                href={`mailto:${supplier.contactEmail}`}
-                className="flex items-center gap-2 text-ink-muted hover:text-indigo-600"
-              >
-                <Mail className="size-4 shrink-0 text-ink-subtle" />
-                <span className="truncate">{supplier.contactEmail}</span>
-              </a>
-            )}
-            {supplier.contactPhone && (
-              <a
-                href={`tel:${supplier.contactPhone}`}
-                className="flex items-center gap-2 text-ink-muted hover:text-indigo-600"
-              >
-                <Phone className="size-4 shrink-0 text-ink-subtle" />
-                {supplier.contactPhone}
-              </a>
-            )}
-            {supplier.website && (
-              <a
-                href={
-                  supplier.website.startsWith("http")
-                    ? supplier.website
-                    : `https://${supplier.website}`
-                }
-                target="_blank"
-                rel="noreferrer noopener"
-                className="flex items-center gap-2 text-ink-muted hover:text-indigo-600"
-              >
-                <ExternalLink className="size-4 shrink-0 text-ink-subtle" />
-                <span className="truncate">{supplier.website}</span>
-              </a>
-            )}
-          </div>
+          {/*
+            No email or phone here on purpose. Orders are placed and tracked
+            through the marketplace, so a public direct line only invites a
+            channel that bypasses it — and exposes the supplier besides.
+          */}
+          <p className="text-xs leading-relaxed text-ink-muted">
+            Order through the marketplace and this supplier confirms, prepares
+            and dispatches from here.
+          </p>
 
           <div className="border-t border-line pt-3">
             <p className="flex items-center gap-2 text-xs font-medium text-ink">

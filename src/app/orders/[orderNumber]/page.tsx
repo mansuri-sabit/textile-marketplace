@@ -2,15 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import {
-  ArrowLeft,
-  Mail,
-  MapPin,
-  Package,
-  Phone,
-  ReceiptText,
-  Store,
-} from "lucide-react";
+import { ArrowLeft, MapPin, Package, ReceiptText, Store } from "lucide-react";
 import { OrderStatusBadge, OrderTimeline } from "@/components/buyer/OrderStatus";
 import { AppError } from "@/server/lib/api";
 import { getSession } from "@/server/middleware/session";
@@ -168,26 +160,13 @@ export default async function OrderDetailPage({
               </p>
             )}
 
-            <div className="mt-3 space-y-1.5 text-xs">
-              {order.supplier?.contactEmail && (
-                <a
-                  href={`mailto:${order.supplier.contactEmail}`}
-                  className="flex items-center gap-2 text-ink-muted hover:text-indigo-600"
-                >
-                  <Mail className="size-3.5 shrink-0" />
-                  <span className="truncate">{order.supplier.contactEmail}</span>
-                </a>
-              )}
-              {order.supplier?.contactPhone && (
-                <a
-                  href={`tel:${order.supplier.contactPhone}`}
-                  className="flex items-center gap-2 text-ink-muted hover:text-indigo-600"
-                >
-                  <Phone className="size-3.5 shrink-0" />
-                  {order.supplier.contactPhone}
-                </a>
-              )}
-            </div>
+            {/* No email or phone by design — the marketplace is the channel.
+                Anything the buyer needs to say rides along with the order. */}
+            <p className="mt-3 text-xs leading-relaxed text-ink-subtle">
+              This supplier confirms and dispatches your order through the
+              marketplace. Add a note at checkout if you need to tell them
+              something.
+            </p>
 
             {order.supplier?.slug && (
               <Link

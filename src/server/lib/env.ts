@@ -24,6 +24,15 @@ const schema = z.object({
   REFRESH_TOKEN_TTL: z.string().default("7d"),
   BCRYPT_COST: z.coerce.number().int().min(10).max(15).default(12),
 
+  /**
+   * Which provider answers the assistant first. OpenAI is quicker to first
+   * token, which matters on a live demo; Hugging Face is the open-source path
+   * the brief prefers. Flip with one env var — the fallback is whichever is
+   * not primary, so both stay wired either way. Embeddings and semantic search
+   * run on Hugging Face regardless of this setting.
+   */
+  AI_CHAT_PRIMARY: z.enum(["openai", "huggingface"]).default("openai"),
+
   HF_TOKEN: z.string().optional(),
   HF_CHAT_MODEL: z.string().default("meta-llama/Llama-3.1-8B-Instruct"),
   HF_EMBEDDING_MODEL: z
@@ -39,8 +48,11 @@ const schema = z.object({
   SARVAM_TTS_MODEL: z.string().default("bulbul:v2"),
 
   ELEVENLABS_API_KEY: z.string().optional(),
-  /** "Rachel" — a clear, neutral default from the shared voice library. */
-  ELEVENLABS_VOICE_ID: z.string().default("21m00Tcm4TlvDq8ikWAM"),
+  /**
+   * "Sarah" — a default voice, not a library one. Library voices 402 on a free
+   * key; `lib/tts.ts` keeps a fallback chain for when this is overridden.
+   */
+  ELEVENLABS_VOICE_ID: z.string().default("EXAVITQu4vr4xnSDxMaL"),
   ELEVENLABS_MODEL: z.string().default("eleven_turbo_v2_5"),
 
   PEXELS_API_KEY: z.string().optional(),

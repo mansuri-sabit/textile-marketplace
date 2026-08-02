@@ -57,11 +57,20 @@ export async function listSupplierDirectory() {
     .filter((s) => s.productCount > 0);
 }
 
-/** Public storefront: the profile plus its live catalog. */
+/**
+ * Public storefront: the profile plus its live catalog.
+ *
+ * Contact details are excluded at the query, not hidden in the view. A buyer
+ * never gets a direct line to a supplier — orders are the channel — and a field
+ * that never leaves the database cannot leak through a future component that
+ * forgets why.
+ */
 export async function getSupplierStorefront(slug: string) {
   await connectDB();
 
-  const supplier = await SupplierProfile.findOne({ slug }).lean();
+  const supplier = await SupplierProfile.findOne({ slug })
+    .select("-contactEmail -contactPhone -gstNumber -user")
+    .lean();
   if (!supplier) {
     throw new AppError("NOT_FOUND", "That supplier does not exist.", 404);
   }

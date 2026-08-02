@@ -8,6 +8,7 @@ import {
   Columns3,
   Mic,
   Send,
+  ShoppingCart,
   Sparkles,
   Square,
   TriangleAlert,
@@ -21,6 +22,7 @@ import { api, ApiError } from "@/lib/api-client";
 import { cn, formatPrice } from "@/lib/cn";
 import { cdnImage } from "@/lib/image";
 import { useAssistant } from "@/store/assistant";
+import { useCart } from "@/store/cart";
 import { useSession } from "@/store/session";
 
 /**
@@ -47,6 +49,12 @@ type AssistantProduct = {
   supplier?: { businessName?: string };
 };
 
+/** What the assistant did, beyond talking. */
+type AssistantAction =
+  | { type: "added_to_cart"; product: string; quantity: number; unit: string; itemCount: number }
+  | { type: "sign_in_required"; product: string; quantity: number }
+  | { type: "cart_failed"; product: string; reason: string };
+
 type AssistantResponse = {
   reply: string;
   products: AssistantProduct[];
@@ -54,6 +62,7 @@ type AssistantResponse = {
   searchUrl?: string;
   suggestions: string[];
   generated: boolean;
+  action?: AssistantAction;
 };
 
 type Turn = {
@@ -62,6 +71,7 @@ type Turn = {
   products?: AssistantProduct[];
   searchUrl?: string;
   generated?: boolean;
+  action?: AssistantAction;
 };
 
 const OPENERS = [
@@ -77,6 +87,7 @@ export function Assistant() {
   const close = useAssistant((s) => s.close);
 
   const role = useSession((s) => s.user?.role);
+  const loadCart = useCart((s) => s.load);
 
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -121,10 +132,16 @@ export function Assistant() {
             products: data.products,
             searchUrl: data.searchUrl,
             generated: data.generated,
+            action: data.action,
           },
         ]);
         setSuggestions(data.suggestions ?? []);
         setCompare([]);
+
+        // The assistant just wrote to the cart, so the header badge and the
+        // cart page are both stale until the store re-reads it.
+        if (data.action?.type === "added_to_cart") loadCart();
+
         speech.speak(data.reply);
       } catch (err) {
         setTurns(history);
@@ -137,7 +154,7 @@ export function Assistant() {
         setBusy(false);
       }
     },
-    [busy, productSlug, speech, turns],
+    [busy, productSlug, speech, turns, loadCart],
   );
 
   // A question handed over by another component — a starter chip on a product
@@ -273,6 +290,8 @@ export function Assistant() {
                     unreachable.
                   </p>
                 )}
+
+                {turn.action && <ActionReceipt action={turn.action} onClose={close} />}
 
                 {turn.products && turn.products.length > 0 && (
                   <div className="space-y-2">
@@ -411,6 +430,71 @@ export function Assistant() {
         </form>
       </div>
     </div>
+  );
+}
+
+/**
+ * Confirms what the assistant actually did to the cart.
+ *
+ * Shown as a receipt rather than trusted from the prose: the server reports the
+ * real outcome after re-checking MOQ and stock, so this can say "added" only
+ * when a row genuinely changed.
+ */
+function ActionReceipt({
+  action,
+  onClose,
+}: {
+  action: AssistantAction;
+  onClose: () => void;
+}) {
+  if (action.type === "added_to_cart") {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-moss-500/30 bg-moss-50 px-3 py-2.5">
+        <ShoppingCart className="size-4 shrink-0 text-moss-600" />
+        <p className="min-w-0 flex-1 text-xs text-ink">
+          Added{" "}
+          <span className="font-medium tnum">
+            {action.quantity} {action.unit}
+          </span>{" "}
+          of {action.product} to your cart.
+        </p>
+        <Link
+          href="/cart"
+          onClick={onClose}
+          className="shrink-0 text-xs font-medium text-moss-600 hover:underline"
+        >
+          View cart
+        </Link>
+      </div>
+    );
+  }
+
+  if (action.type === "sign_in_required") {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-line bg-raised px-3 py-2.5">
+        <ShoppingCart className="size-4 shrink-0 text-ink-subtle" />
+        <p className="min-w-0 flex-1 text-xs text-ink">
+          Sign in and I&rsquo;ll add {action.quantity} of {action.product} to
+          your cart.
+        </p>
+        <Link
+          href="/login"
+          onClick={onClose}
+          className="shrink-0 text-xs font-medium text-indigo-600 hover:underline"
+        >
+          Sign in
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-ink">
+      <TriangleAlert className="mt-px size-3.5 shrink-0 text-amber-500" />
+      <span>
+        Could not add {action.product} — {action.reason}
+      </span>
+    </p>
   );
 }
 

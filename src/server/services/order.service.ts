@@ -170,8 +170,10 @@ export async function listBuyerOrders(
 
 export async function getBuyerOrder(buyerId: string, orderNumber: string) {
   await connectDB();
+  // Deliberately no contactEmail/contactPhone: a buyer never gets a direct line
+  // to a supplier. Everything they need to say travels with the order.
   const order = await Order.findOne({ orderNumber, buyer: new Types.ObjectId(buyerId) })
-    .populate("supplier", "businessName slug contactEmail contactPhone address")
+    .populate("supplier", "businessName slug address.city address.state")
     .lean();
 
   // Same 404 whether the order is missing or belongs to someone else — an

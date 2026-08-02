@@ -42,7 +42,7 @@ npm run smoke            # all three suites (needs dev server running)
 
 Smoke suites live in `scripts/` and assert against a live server:
 `smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56),
-`smoke:journey` (123). **248 assertions, all passing as of the last commit.**
+`smoke:journey` (137). **262 assertions, all passing as of the last commit.**
 They create throwaway accounts, supplier profiles and orders, and mutate data;
 that is fine for a prototype.
 
@@ -164,11 +164,37 @@ one-line summary, an 8B model echoes it back verbatim instead of answering.
 `[n]` markers are stripped from the reply server-side — a rule not to echo them
 holds most of the time, and most of the time is not a standard worth shipping.
 
+**The assistant acts, not just answers.** The briefing video asks for this by
+name — "it can add some certain item to the shopping cart, that can be agentic
+AI". The model never touches the cart: it *proposes* one by emitting
+`[[CART:n|qty]]`, an index into the grounding block. The server resolves that
+index against the rows it retrieved, then goes through the ordinary
+`cart.service`, so MOQ, stock and status are re-checked exactly as the Add to
+Cart button checks them. A model cannot add a fabric that was never retrieved,
+and a refusal comes back as an action the UI explains rather than a thrown
+error. The marker is stripped from the prose.
+
+**A buyer never gets a direct line to a supplier.** The video is explicit:
+never expose supplier detail to a buyer. Contact fields are dropped at the
+*query* — `getSupplierStorefront` and `getBuyerOrder` do not select them — so a
+future component cannot reintroduce them from data that was still being sent.
+Smoke assertions check the payloads, not the pixels. The assistant is told the
+same, and its supplier grounding block carries no contact fields to leak.
+
 **Text to speech is premium-first with a real fallback.** ElevenLabs runs
 through our own `/api/tts` because the key bills per character and must never
 reach the browser. The client treats *any* failure — unconfigured, 401, quota,
 timeout, autoplay policy — as "use `speechSynthesis`", so an exhausted quota
-mid-demo costs voice quality, not voice. `/api/tts` answers 503 rather than 500
+mid-demo costs voice quality, not voice.
+
+ElevenLabs splits its catalog into *default* and *library* voices, and a free
+key gets `402 paid_plan_required` on the latter — which is what broke this
+first time round, with a voice ID that reads as a perfectly ordinary default.
+The key also lacks `voices_read`, so the account's entitlements cannot be
+listed; `lib/tts.ts` keeps a short chain of known-good default voices (Sarah,
+George, Adam) and remembers which one worked. Only 402 advances the chain — a
+401 or 429 fails identically for every voice, so it stops and lets the browser
+take over. `/api/tts` answers 503 rather than 500
 for exactly that reason: the client has to be able to tell "fall back" from
 "something broke". The panel names which voice actually spoke.
 
@@ -220,12 +246,17 @@ flash. Prices use `.tnum` so digits do not jitter.
 committed template. Vercel holds the same values **except** `NODE_ENV` (Vercel
 sets it; overriding it breaks the production build).
 
-Verified working: MongoDB Atlas, Hugging Face (embeddings 296ms/384d; grounded
-assistant replies land in 6–8s, since the prompt now carries six retrieved
-products), Cloudinary (free plan), Pexels (25k/month). Untested: Redis, Sarvam,
-OpenAI fallback, **ElevenLabs — no key is set, so `/api/tts` returns 503 and
-the browser voice is what actually speaks.** Add `ELEVENLABS_API_KEY` to switch
-it on; nothing else changes.
+Verified working: MongoDB Atlas, OpenAI (assistant primary), Hugging Face
+(embeddings 296ms/384d, and the chat fallback), ElevenLabs (free tier —
+default voices only), Cloudinary (free plan), Pexels (25k/month). Untested:
+Redis, Sarvam.
+
+`AI_CHAT_PRIMARY` picks which provider answers first (`openai` by default,
+`huggingface` the other option). OpenAI reaches first token faster, which shows
+on a live demo; the briefing video says an open-source model earns "higher
+leverage" in judging. Embeddings and semantic search run on Hugging Face
+either way — the open-source model does the retrieval that grounds every
+answer — so flipping this back before submission costs one env var.
 
 `MONGODB_URI` points at a cluster shared with another project, isolated by
 `MONGODB_DB=textile_marketplace`. Atlas Network Access must allow `0.0.0.0/0`

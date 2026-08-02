@@ -1,7 +1,9 @@
+import { AppError } from "../lib/api";
 import { connectDB } from "../lib/db";
 import { chat, ChatUnavailableError, type ChatMessage } from "../lib/chat";
-import { Product, User } from "../models";
+import { Product, SupplierProfile, User } from "../models";
 import { productQuerySchema } from "../validators/product";
+import { addItem } from "./cart.service";
 import { getSimilarProducts, listProducts } from "./product.service";
 import type { AssistantInput } from "../validators/assistant";
 
@@ -42,10 +44,44 @@ type RetrievedProduct = {
     finish?: string;
     certifications?: string[];
   };
-  supplier?: { businessName?: string; address?: { city?: string } };
+  supplier?: { _id?: unknown; businessName?: string; address?: { city?: string } };
+};
+
+/**
+ * A supplier as the assistant may describe them. Contact details are absent by
+ * construction — a buyer never gets a direct line to a supplier, and the
+ * assistant is not a loophole around that.
+ */
+type RetrievedSupplier = {
+  businessName: string;
+  businessType?: string;
+  description?: string;
+  address?: { city?: string; state?: string };
+  categories?: string[];
+  fabricTypes?: string[];
+  minimumOrderQuantity?: number;
+  yearEstablished?: number;
+  verified?: boolean;
+  rating?: number;
+  ratingCount?: number;
 };
 
 export type AssistantMode = "search" | "product" | "compare";
+
+/**
+ * What the assistant did, beyond talking.
+ *
+ * The brief's own walkthrough asks for this: "it can add some certain item to
+ * the shopping cart — that can be agentic AI". The model only ever *proposes*
+ * an action by index into the grounding block; the server resolves that index,
+ * re-checks MOQ and stock through the normal cart service, and reports what
+ * actually happened. A model cannot add a fabric that was not retrieved, nor
+ * bypass a single rule the Add to Cart button obeys.
+ */
+export type AssistantAction =
+  | { type: "added_to_cart"; product: string; quantity: number; unit: string; itemCount: number }
+  | { type: "sign_in_required"; product: string; quantity: number }
+  | { type: "cart_failed"; product: string; reason: string };
 
 /**
  * One fabric as labelled key/value data.
@@ -103,6 +139,39 @@ async function buyerContext(buyerId?: string): Promise<string | null> {
     : null;
 }
 
+/** The distinct suppliers behind the retrieved fabrics, so "tell me about this
+ *  supplier" has something real to answer from. */
+async function retrieveSuppliers(
+  products: RetrievedProduct[],
+): Promise<RetrievedSupplier[]> {
+  const ids = [...new Set(products.map((p) => p.supplier?._id).filter(Boolean))];
+  if (!ids.length) return [];
+
+  return SupplierProfile.find({ _id: { $in: ids } })
+    .select(
+      "businessName businessType description address.city address.state categories fabricTypes minimumOrderQuantity yearEstablished verified rating ratingCount",
+    )
+    .lean() as unknown as Promise<RetrievedSupplier[]>;
+}
+
+function supplierFact(s: RetrievedSupplier): string {
+  const attrs = [
+    s.businessType ? `type: ${s.businessType}` : null,
+    s.address?.city
+      ? `based in: ${s.address.city}${s.address.state ? `, ${s.address.state}` : ""}`
+      : null,
+    s.yearEstablished ? `established: ${s.yearEstablished}` : null,
+    s.verified ? "verified: yes" : null,
+    s.rating ? `rating: ${s.rating.toFixed(1)} from ${s.ratingCount ?? 0}` : null,
+    s.categories?.length ? `supplies: ${s.categories.join(", ")}` : null,
+    s.fabricTypes?.length ? `construction: ${s.fabricTypes.join(", ")}` : null,
+    s.minimumOrderQuantity ? `business moq: ${s.minimumOrderQuantity}` : null,
+    s.description ? `about: ${s.description}` : null,
+  ].filter(Boolean);
+
+  return `${s.businessName}\n    ${attrs.join("\n    ")}`;
+}
+
 async function retrieve(input: AssistantInput): Promise<{
   products: RetrievedProduct[];
   mode: AssistantMode;
@@ -147,8 +216,10 @@ async function retrieve(input: AssistantInput): Promise<{
 
 function systemPrompt(
   facts: string,
+  supplierFacts: string,
   mode: AssistantMode,
   preferences: string | null,
+  canAddToCart: boolean,
 ): string {
   const task =
     mode === "compare"
@@ -169,13 +240,34 @@ function systemPrompt(
     "- Write plain sentences. Never reproduce the catalog's `key: value` layout — read the data, then explain it in your own words.",
     "- Two to four sentences, or a short list when comparing. No headings, no preamble, no markdown tables.",
     "- You are talking to a business buyer. Lead with construction, weight, price and MOQ, not adjectives.",
+    "- Never give out a supplier's email address or phone number. Orders travel through the marketplace; you do not have those details and must not invent them.",
     preferences ? `\n${preferences}` : "",
+    canAddToCart
+      ? [
+          "",
+          "ADDING TO THE CART",
+          "If — and only if — the buyer clearly asks you to add something to their cart or place it in their basket, finish your reply with a line in exactly this form:",
+          "[[CART:n|quantity]]",
+          "where n is the catalog number and quantity is a whole number in that fabric's unit. Use its MOQ when the buyer does not name a quantity, and never less than the MOQ.",
+          "Say in words what you are adding. Never emit this marker for a question, a comparison, or a recommendation the buyer has not accepted.",
+        ].join("\n")
+      : "",
     "",
     "CATALOG:",
     facts || "(no fabrics matched)",
+    supplierFacts ? `\nSUPPLIERS:\n${supplierFacts}` : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** Pulls the action marker out of the reply, leaving the prose behind. */
+const CART_MARKER = /\[\[CART:\s*(\d+)\s*\|\s*(\d+)\s*\]\]/;
+
+function extractCartIntent(text: string): { index: number; quantity: number } | null {
+  const match = text.match(CART_MARKER);
+  if (!match) return null;
+  return { index: Number(match[1]) - 1, quantity: Number(match[2]) };
 }
 
 /**
@@ -186,9 +278,57 @@ function systemPrompt(
  */
 function cleanReply(text: string): string {
   return text
+    .replace(CART_MARKER, "")
     .replace(/\[(\d+)\]\s*/g, "")
-    .replace(/^\s*(?:CATALOG|Answer)\s*:\s*/i, "")
+    .replace(/^\s*(?:CATALOG|SUPPLIERS|Answer)\s*:\s*/i, "")
     .trim();
+}
+
+/**
+ * Carries out an add-to-cart the model proposed.
+ *
+ * Everything is re-checked here: the index has to resolve to a fabric that was
+ * actually retrieved, and `addItem` applies the same MOQ, stock and status
+ * rules the Add to Cart button goes through. A refusal comes back as an action
+ * the UI can explain, not as a thrown error — the reply itself is still useful.
+ */
+async function runCartIntent(
+  intent: { index: number; quantity: number },
+  products: RetrievedProduct[],
+  buyerId?: string,
+): Promise<AssistantAction | undefined> {
+  const product = products[intent.index];
+  if (!product) return undefined;
+
+  const quantity = Math.max(
+    intent.quantity || product.minimumOrderQuantity,
+    product.minimumOrderQuantity,
+  );
+
+  if (!buyerId) {
+    return { type: "sign_in_required", product: product.name, quantity };
+  }
+
+  try {
+    const cart = await addItem(buyerId, {
+      productId: String(product._id),
+      quantity,
+    });
+    return {
+      type: "added_to_cart",
+      product: product.name,
+      quantity,
+      unit: product.unit,
+      itemCount: cart.itemCount,
+    };
+  } catch (err) {
+    return {
+      type: "cart_failed",
+      product: product.name,
+      reason:
+        err instanceof AppError ? err.message : "That could not be added to your cart.",
+    };
+  }
 }
 
 /** Deterministic answer for when no model is reachable. Never an error page. */
@@ -236,8 +376,13 @@ function followUps(products: RetrievedProduct[], mode: AssistantMode): string[] 
 export async function askAssistant(input: AssistantInput) {
   const { products, mode, searchUrl } = await retrieve(input);
 
+  const [suppliers, preferences] = await Promise.all([
+    retrieveSuppliers(products),
+    buyerContext(input.buyerId),
+  ]);
+
   const facts = products.map(factLine).join("\n");
-  const preferences = await buyerContext(input.buyerId);
+  const supplierFacts = suppliers.map(supplierFact).join("\n");
 
   // Only the tail of the conversation is sent. The grounding block is rebuilt
   // every turn anyway, so older turns add tokens without adding accuracy.
@@ -248,12 +393,26 @@ export async function askAssistant(input: AssistantInput) {
   let reply: string;
   let grounded = true;
   let provider: string | null = null;
+  let action: AssistantAction | undefined;
 
   try {
     const result = await chat([
-      { role: "system", content: systemPrompt(facts, mode, preferences) },
+      {
+        role: "system",
+        content: systemPrompt(
+          facts,
+          supplierFacts,
+          mode,
+          preferences,
+          products.length > 0,
+        ),
+      },
       ...history,
     ]);
+
+    const intent = extractCartIntent(result.text);
+    if (intent) action = await runCartIntent(intent, products, input.buyerId);
+
     reply = cleanReply(result.text);
     provider = result.provider;
   } catch (err) {
@@ -273,5 +432,7 @@ export async function askAssistant(input: AssistantInput) {
     /** False when the answer came from retrieval alone, so the UI can say so. */
     generated: grounded,
     provider,
+    /** Present when the assistant did something, not just said something. */
+    action,
   };
 }
