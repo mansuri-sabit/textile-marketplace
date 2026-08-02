@@ -3,3 +3,223 @@
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
+
+# TextileMart — B2B fabric marketplace
+
+Hackathon prototype. **Submission deadline: 7 August 2026.** Started 2 August 2026.
+
+Deliverables are a **demo video** and a **live URL**. Source code submission is
+explicitly *not* required — so a broken deploy scores zero and a beautiful repo
+nobody opens scores nothing. Treat deployment and the demo path as first-class
+work, not cleanup.
+
+Judging weights product thinking, engineering quality, UX and performance above
+feature count. Payments, escrow, logistics and admin dashboards are out of scope.
+
+- Live: https://textile-marketplace-azure.vercel.app
+- Repo: https://github.com/mansuri-sabit/textile-marketplace
+- Brief: `../Tast.md` (outside this repo)
+
+## Stack
+
+Next.js 16.2 (App Router, Turbopack) · React 19 · Tailwind v4 · TypeScript ·
+MongoDB Atlas + Mongoose 9 · jose for JWT · zustand · Cloudinary · Hugging Face.
+
+One deployable, not a split frontend/backend. Next route handlers *are* the
+Node backend the brief asks for, and a single deploy removes cross-domain
+cookie work and a second cold-start surface that earn no marks.
+
+## Commands
+
+```bash
+npm run dev              # localhost:3000
+npm run build            # production build
+npm run typecheck        # tsc --noEmit — run before every commit
+npm run seed             # full seed; -- --wipe to reset first
+npm run seed:verify      # counts, embedding dims, image reachability
+npm run smoke            # all three suites (needs dev server running)
+```
+
+Smoke suites live in `scripts/` and assert against a live server:
+`smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56). **125 assertions,
+all passing as of the last commit.** They create throwaway accounts and mutate
+data; that is fine for a prototype.
+
+## Layout
+
+```
+src/
+  app/
+    (auth)/            login, register — split layout, no marketplace chrome
+    api/               23 route handlers; thin, delegate to src/server
+    products/          browse + detail
+    page.tsx           homepage
+  server/              backend, kept entirely separate from UI
+    constants/         marketplace vocabulary — categories, statuses, flow
+    data/              seed catalog (43 base SKUs, 10 suppliers)
+    lib/               db, env, tokens, cookies, password, pricing,
+                       embeddings, cloudinary, pexels, slug, api
+    middleware/        session.ts — getSession, requireBuyer, requireSupplier
+    models/            User, SupplierProfile, Product, Cart, Order
+    repositories/      product.repository — all catalog read queries
+    services/          auth, product, cart, order, supplier
+    validators/        zod schemas per domain
+  components/{ui,layout,buyer,supplier,ai}
+  lib/                 client helpers: api-client, cn, image, serialize
+  store/               zustand: session, cart
+  types/               client-side API shapes
+  proxy.ts             edge route guards (Next 16 renamed middleware.ts)
+scripts/               seed, verify, smoke tests, seed-images.json
+```
+
+Server Components import services **directly** — no HTTP round trip to our own
+API. Pass results through `serialize<T>()` before handing them to a Client
+Component; Mongoose lean docs carry ObjectId and Date, which cannot cross the
+boundary. `serialize` deliberately takes `unknown` and returns the caller's
+declared type, because the round trip changes types (ObjectId → string).
+
+## Decisions worth not re-litigating
+
+**Auth.** Access + refresh JWTs in httpOnly, sameSite lax cookies. `jose`, not
+`jsonwebtoken`, because the edge proxy verifies a token on every navigation and
+`jsonwebtoken` needs Node crypto the edge lacks. Every token carries a unique
+`jti`: `iat` is second-resolution, so without it two tokens minted in the same
+second are byte-identical and refresh rotation is unobservable (a real bug the
+smoke test caught). Login answers with one error code and always runs a real
+bcrypt compare, so neither wording nor timing reveals which emails exist.
+`refreshSession` re-checks `tokenVersion` against the DB so logout-everywhere
+can kill unexpired tokens.
+
+**`src/proxy.ts` is UX, not security.** It redirects; every API route re-checks
+via `requireRole`. Never move an authorisation decision into it alone.
+
+**Orders split per supplier at checkout**, sharing a `checkoutGroupId`. Each
+supplier sees only their own lines. The cart shows the split *before* the buyer
+commits. Order line items are denormalised so a historical order still renders
+after the product is renamed or deleted.
+
+**Stock** is decremented with a conditional update per line (`stock >= quantity`)
+and compensated on failure, not a transaction. The conditional update is atomic
+where the race actually is, and this keeps checkout working without a replica
+set. Cancelling an order returns stock.
+
+**Order status** is constrained by `ORDER_STATUS_FLOW` in
+`server/constants/marketplace.ts`: no skipping, no going backwards, `completed`
+is terminal.
+
+**Bulk pricing** lives in one helper (`server/lib/pricing.ts`) and is applied in
+cart, checkout and the stored order. `AddToCart.tsx` mirrors it client-side so
+the buyer sees the real unit price before committing — if you change one, change
+both.
+
+**Ownership is enforced inside query filters**, so another supplier's id matches
+nothing and 404s rather than partially writing. An order that is not yours
+returns the same 404 as one that does not exist, so order numbers cannot be
+probed.
+
+**Filter semantics live only in `product.repository.ts`** so the grid, the facet
+counts and the AI assistant can never disagree about what a filter means. Facets
+are computed against the other active filters. An unknown supplier slug returns
+nothing rather than silently dropping the filter.
+
+**Search.** `q` embeds the query and ranks by cosine against catalog vectors,
+intersected with active filters; keyword regex is the fallback. The response
+reports `mode` (`semantic` / `keyword` / `browse`) and the UI labels it honestly.
+Embeddings are cached per isolate for 5 minutes; call
+`invalidateEmbeddingCache()` after any catalog write. An exact in-memory scan
+beats index setup at 105 products — Atlas Vector Search is the swap-in if the
+catalog ever grows, and nothing above `semanticRank` would change.
+
+**Embeddings** are generated once at seed time, never per request, to protect
+the Hugging Face free-tier quota for demo day. `embeddingMeta` records provider
+and dimension because HF (384) and OpenAI (1536) vectors are not comparable — a
+provider switch requires a re-seed and the mismatch must be detectable.
+
+**Images.** Catalog photography was fetched once from Pexels and re-hosted on
+Cloudinary, so product pages never depend on a third-party rate limit at render
+time. The mapping is cached in `scripts/seed-images.json` and committed — a
+re-seed costs no quota and needs no Pexels key. Photographer credit is stored
+per image and rendered on product pages; that was promised in the API
+application, so keep it. Supplier uploads go browser-direct to Cloudinary via a
+signed, supplier-only endpoint, which sidesteps the serverless body limit.
+
+**Design tokens** in `globals.css`: warm neutrals rather than cold grey (a fabric
+catalog reads better on paper tones), indigo primary as the dye this industry is
+built on, clay as the single interrupting accent. Dark mode is class-driven with
+a pre-paint inline script, so the toggle can override the OS setting without a
+flash. Prices use `.tnum` so digits do not jitter.
+
+## Environment
+
+`.env` is git-ignored and already populated locally; `.env.example` is the
+committed template. Vercel holds the same values **except** `NODE_ENV` (Vercel
+sets it; overriding it breaks the production build).
+
+Verified working: MongoDB Atlas, Hugging Face (chat 1.4s, embeddings 296ms/384d),
+Cloudinary (free plan), Pexels (25k/month). Untested: Redis, Sarvam, OpenAI
+fallback.
+
+`MONGODB_URI` points at a cluster shared with another project, isolated by
+`MONGODB_DB=textile_marketplace`. Atlas Network Access must allow `0.0.0.0/0`
+for Vercel's dynamic IPs.
+
+Secrets were reused from another project early on. `JWT_*` are freshly generated,
+but **OpenAI, Sarvam, Cloudinary, Redis and Mongo credentials are shared with a
+live production app** — never widen their blast radius, and never commit `.env`.
+Scan staged files for `.env` before every commit.
+
+## Demo accounts
+
+```
+buyer     buyer@demo.test              / Buyer123
+supplier  supplier.meridian@demo.test  / Supplier123
+```
+Ten suppliers exist (`supplier.kanchi@`, `supplier.tirupur@`, …), same password.
+The login screen has one-tap buttons for both, so a reviewer never has to type.
+
+## Status
+
+Done: backend (23 routes), catalog seed (105 products / 315 images / 105
+embeddings / 10 suppliers), design system and shell, homepage, browse with
+filters and semantic search, product detail, login and register.
+
+Remaining, in priority order:
+
+1. **Cart → checkout → order confirmation → buyer dashboard.** APIs all exist
+   and are smoke-tested; this is UI only.
+2. **Supplier UI** — dashboard widgets, inventory CRUD with image upload, order
+   management with the status flow. APIs exist.
+3. **Conversational onboarding**, buyer and supplier. The brief pushes hard for
+   chat or voice instead of forms (lines 70, 109). `onboardingCompleted` and
+   `buyerPreferences` already exist on `User`; `SupplierProfile` is the target
+   for the supplier side. `proxy.ts` already redirects incomplete accounts to
+   `/onboarding` and `/supplier/onboarding` — **those routes do not exist yet**,
+   so a freshly registered user currently hits a 404. Fix this early.
+4. **AI assistant** — chat, voice, NL search, recommendations, comparison,
+   similar products, Q&A. This is the single biggest differentiator and the most
+   demo-able thing in the brief; do not let it get squeezed. Browser Web Speech
+   API (`SpeechRecognition` + `speechSynthesis`) gives both voice directions for
+   free in Chrome, which is also the demo browser. Sarvam is configured if
+   Hinglish accuracy needs to be better.
+5. Mobile pass on a real device, deploy verification, demo video.
+
+The brief calls AI a bonus (line 192) while also making it core scope (lines
+30–40). Treat it as core.
+
+## Gotchas that already cost time
+
+- **Restart the dev server after adding server modules.** Turbopack served stale
+  code and semantic search silently fell back to keyword — three smoke tests red
+  with no bug in the code.
+- **Never edit files with PowerShell string replacement.** `Get-Content -Raw`
+  reads UTF-8 as ANSI and mangles em-dashes and `₹` into mojibake. Use the Edit
+  tool.
+- **Commit messages: use `git commit -F <file>`.** Double quotes inside a
+  PowerShell here-string break argument parsing and git receives fragments.
+- **Mongoose 9 renamed `FilterQuery` to `QueryFilter`.**
+- **Next 16 renamed `middleware.ts` to `proxy.ts`** and the exported function to
+  `proxy`.
+- `cart.items` is a Mongoose DocumentArray — assigning a plain array fails
+  typecheck. Use `$pull` (which is also race-free).
+- Zod v4: `.default()` must satisfy the *output* type, so a nested `.default([])`
+  makes that key required in the parent's default.
