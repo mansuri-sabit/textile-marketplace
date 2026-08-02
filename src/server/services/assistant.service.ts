@@ -25,7 +25,15 @@ import type { AssistantInput } from "../validators/assistant";
  */
 
 const MAX_HISTORY = 6;
-const RETRIEVE_LIMIT = 6;
+/**
+ * Four, matching what the panel shows as cards.
+ *
+ * Grounding on more than is displayed lets the model name a fabric the buyer
+ * cannot see or click, which reads as a hallucination even though it is not.
+ * Keeping the two equal also shortens the prompt, and the reply lands faster
+ * for it — worth having on a live demo.
+ */
+const RETRIEVE_LIMIT = 4;
 
 type RetrievedProduct = {
   _id: unknown;

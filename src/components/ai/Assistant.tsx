@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
+  Check,
   Columns3,
   Mic,
   Send,
@@ -294,15 +295,17 @@ export function Assistant() {
 
           {turns.map((turn, i) =>
             turn.role === "user" ? (
+              // w-fit so a two-word question is a two-word bubble; max-w stops
+              // a long one from running the full width of the panel.
               <p
                 key={i}
-                className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-indigo-600 px-3.5 py-2.5 text-sm leading-relaxed text-white dark:bg-indigo-500 dark:text-indigo-50"
+                className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-tr-sm bg-indigo-600 px-3.5 py-2.5 text-sm leading-relaxed text-white dark:bg-indigo-500 dark:text-indigo-50"
               >
                 {turn.content}
               </p>
             ) : (
               <div key={i} className="space-y-3">
-                <p className="max-w-[92%] whitespace-pre-line rounded-2xl rounded-tl-sm border border-line bg-raised px-3.5 py-2.5 text-sm leading-relaxed text-ink">
+                <p className="w-fit max-w-[92%] whitespace-pre-line rounded-2xl rounded-tl-sm border border-line bg-raised px-3.5 py-2.5 text-sm leading-relaxed text-ink">
                   {turn.content}
                 </p>
 
@@ -323,22 +326,27 @@ export function Assistant() {
 
                 {turn.products && turn.products.length > 0 && (
                   <div className="space-y-2">
-                    {turn.products.map((product) => (
-                      <ProductLine
-                        key={product._id}
-                        product={product}
-                        selected={compare.includes(product.slug)}
-                        onToggle={() =>
-                          setCompare((c) =>
-                            c.includes(product.slug)
-                              ? c.filter((s) => s !== product.slug)
-                              : c.length >= 4
-                                ? c
-                                : [...c, product.slug],
-                          )
-                        }
-                      />
-                    ))}
+                    {/* Two by two. The server retrieves exactly these four, so
+                        every fabric the reply can name is also one the buyer
+                        can see and click. */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {turn.products.slice(0, 4).map((product) => (
+                        <ProductTile
+                          key={product._id}
+                          product={product}
+                          selected={compare.includes(product.slug)}
+                          onToggle={() =>
+                            setCompare((c) =>
+                              c.includes(product.slug)
+                                ? c.filter((s) => s !== product.slug)
+                                : c.length >= 4
+                                  ? c
+                                  : [...c, product.slug],
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
 
                     {turn.searchUrl && (
                       <Link
@@ -544,7 +552,15 @@ function ActionReceipt({
   );
 }
 
-function ProductLine({
+/**
+ * One fabric in the assistant's result grid.
+ *
+ * The photograph carries most of the recognition in a panel this narrow, so it
+ * leads; the compare toggle sits on the image rather than stealing a row of
+ * text. Selecting for comparison must not navigate, hence a button over the
+ * link rather than inside it.
+ */
+function ProductTile({
   product,
   selected,
   onToggle,
@@ -559,45 +575,53 @@ function ProductLine({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg border p-2 transition-colors",
+        "group relative overflow-hidden rounded-lg border transition-colors",
         selected ? "border-indigo-400 bg-indigo-50" : "border-line bg-surface",
       )}
     >
-      <Link
-        href={`/products/${product.slug}`}
-        onClick={close}
-        className="relative size-12 shrink-0 overflow-hidden rounded-md bg-raised"
-      >
-        {image && (
-          <Image
-            src={cdnImage(image, { width: 120, height: 120 })}
-            alt=""
-            fill
-            sizes="48px"
-            className="object-cover"
-          />
+      <Link href={`/products/${product.slug}`} onClick={close} className="block">
+        <span className="relative block aspect-4/3 overflow-hidden bg-raised">
+          {image && (
+            <Image
+              src={cdnImage(image, { width: 260, height: 195 })}
+              alt=""
+              fill
+              sizes="180px"
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+          )}
+        </span>
+
+        <span className="block p-2">
+          <span className="line-clamp-2 block text-[11px] font-medium leading-snug text-ink">
+            {product.name}
+          </span>
+          <span className="mt-1 block text-[11px] font-semibold text-ink tnum">
+            {formatPrice(product.pricePerUnit)}
+            <span className="font-normal text-ink-subtle">/{product.unit}</span>
+          </span>
+          <span className="mt-0.5 block text-[10px] text-ink-subtle tnum">
+            {product.specifications?.gsm ? `${product.specifications.gsm} GSM · ` : ""}
+            MOQ {product.minimumOrderQuantity}
+          </span>
+        </span>
+      </Link>
+
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={selected}
+        aria-label={`Compare ${product.name}`}
+        title="Add to comparison"
+        className={cn(
+          "absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-full backdrop-blur transition-colors",
+          selected
+            ? "bg-indigo-600 text-white"
+            : "bg-surface/85 text-ink-subtle hover:text-ink",
         )}
-      </Link>
-
-      <Link href={`/products/${product.slug}`} onClick={close} className="min-w-0 flex-1">
-        <p className="truncate text-xs font-medium text-ink">{product.name}</p>
-        <p className="mt-0.5 truncate text-[11px] text-ink-subtle tnum">
-          {product.specifications?.gsm ? `${product.specifications.gsm} GSM · ` : ""}
-          {formatPrice(product.pricePerUnit)}/{product.unit} · MOQ{" "}
-          {product.minimumOrderQuantity}
-        </p>
-      </Link>
-
-      <label className="flex shrink-0 cursor-pointer items-center gap-1.5 pr-1 text-[11px] text-ink-subtle">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggle}
-          className="size-3.5 accent-indigo-600"
-          aria-label={`Compare ${product.name}`}
-        />
-        Compare
-      </label>
+      >
+        {selected ? <Check className="size-3.5" /> : <Columns3 className="size-3" />}
+      </button>
     </div>
   );
 }
