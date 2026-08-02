@@ -9,13 +9,17 @@ import {
   Mic,
   Send,
   ShoppingCart,
-  Sparkles,
   Square,
   TriangleAlert,
   Volume2,
   VolumeX,
   X,
 } from "lucide-react";
+import {
+  ASSISTANT_NAME,
+  ASSISTANT_ROLE,
+  AssistantAvatar,
+} from "@/components/ai/AssistantAvatar";
 import { useSpeechInput, useSpeechOutput } from "@/components/ai/useSpeech";
 import { Button } from "@/components/ui";
 import { api, ApiError } from "@/lib/api-client";
@@ -198,11 +202,14 @@ export function Assistant() {
       <button
         type="button"
         onClick={() => openAssistant()}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-3 text-sm font-medium text-white shadow-raised transition-transform hover:scale-105 dark:bg-indigo-500 dark:text-indigo-50"
-        aria-label="Open the sourcing assistant"
+        className="group fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-indigo-600 py-1.5 pl-1.5 pr-2 text-sm font-medium text-white shadow-raised transition-transform hover:scale-105 sm:pr-4 dark:bg-indigo-500 dark:text-indigo-50"
+        aria-label={`Ask ${ASSISTANT_NAME}, the sourcing assistant`}
       >
-        <Sparkles className="size-[18px]" />
-        <span className="hidden sm:inline">Ask the assistant</span>
+        <span className="relative">
+          <AssistantAvatar className="size-9" ring />
+          <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-indigo-600 bg-moss-500 dark:border-indigo-500" />
+        </span>
+        <span className="hidden pr-1 sm:inline">Ask {ASSISTANT_NAME}</span>
       </button>
     );
   }
@@ -214,20 +221,26 @@ export function Assistant() {
       aria-label="Sourcing assistant"
     >
       <div className="flex h-[85vh] w-full flex-col overflow-hidden rounded-t-card border border-line bg-surface shadow-raised sm:h-[600px] sm:w-[420px] sm:rounded-card">
-        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-indigo-600 text-white dark:bg-indigo-500">
-            <Sparkles className="size-4" />
+        <header className="flex items-center gap-3 bg-indigo-600 px-4 py-3.5 dark:bg-indigo-900">
+          <span className="relative shrink-0">
+            <AssistantAvatar className="size-10" ring />
+            {/* Online dot, as on the reference designs — the assistant is
+                always available, and saying so sets the expectation. */}
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-indigo-600 bg-moss-500 dark:border-indigo-900" />
           </span>
+
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-ink">Sourcing assistant</p>
-            <p className="truncate text-[11px] text-ink-subtle">
+            <p className="text-sm font-semibold leading-tight text-white">
+              {ASSISTANT_NAME}
+            </p>
+            <p className="truncate text-[11px] leading-tight text-white/70">
               {speech.enabled && speech.voice
                 ? speech.voice === "premium"
                   ? "Speaking · premium voice"
                   : "Speaking · browser voice"
                 : productSlug
-                  ? "Asking about this fabric"
-                  : "Grounded in the live catalog"}
+                  ? "Online · asking about this fabric"
+                  : `Online · ${ASSISTANT_ROLE.toLowerCase()}`}
             </p>
           </div>
 
@@ -242,8 +255,8 @@ export function Assistant() {
               className={cn(
                 "grid size-8 place-items-center rounded-lg transition-colors",
                 speech.enabled
-                  ? "bg-indigo-50 text-indigo-600"
-                  : "text-ink-subtle hover:bg-raised hover:text-ink",
+                  ? "bg-white/20 text-white"
+                  : "text-white/70 hover:bg-white/10 hover:text-white",
               )}
               aria-label={speech.enabled ? "Turn off spoken replies" : "Read replies aloud"}
             >
@@ -254,7 +267,7 @@ export function Assistant() {
           <button
             type="button"
             onClick={close}
-            className="grid size-8 place-items-center rounded-lg text-ink-subtle transition-colors hover:bg-raised hover:text-ink"
+            className="grid size-8 place-items-center rounded-lg text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="Close the assistant"
           >
             <X className="size-4" />
@@ -262,11 +275,20 @@ export function Assistant() {
         </header>
 
         <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {/*
+            Opening line first, then the openers as quick replies directly
+            under it — the buyer meets a suggestion where they are reading,
+            not pinned to the bottom of the panel where it reads as chrome.
+          */}
           {turns.length === 0 && (
-            <div className="rounded-2xl rounded-tl-sm border border-line bg-raised px-4 py-3 text-sm leading-relaxed text-ink">
-              {productSlug
-                ? "Ask me anything about this fabric — weight, handling, what it suits, or how it compares to the alternatives."
-                : "Describe what you're making and I'll find fabric for it. I only answer from the live catalog, so everything I show you is really in stock."}
+            <div className="space-y-3">
+              <p className="rounded-2xl rounded-tl-sm border border-line bg-raised px-4 py-3 text-sm leading-relaxed text-ink">
+                Hi, I&rsquo;m {ASSISTANT_NAME}.{" "}
+                {productSlug
+                  ? "Ask me anything about this fabric — weight, handling, what it suits, or how it compares to the alternatives."
+                  : "Tell me what you're making and I'll find fabric for it. I only answer from the live catalog, so everything I show you is really in stock."}
+              </p>
+              <QuickReplies options={suggestions} onPick={send} disabled={busy} />
             </div>
           )}
 
@@ -292,6 +314,12 @@ export function Assistant() {
                 )}
 
                 {turn.action && <ActionReceipt action={turn.action} onClose={close} />}
+
+                {/* Follow-ups belong to the message that prompted them, so they
+                    only appear under the latest reply. */}
+                {i === turns.length - 1 && !busy && (
+                  <QuickReplies options={suggestions} onPick={send} disabled={busy} />
+                )}
 
                 {turn.products && turn.products.length > 0 && (
                   <div className="space-y-2">
@@ -371,21 +399,6 @@ export function Assistant() {
           </div>
         )}
 
-        {suggestions.length > 0 && !busy && (
-          <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-line px-4 py-2.5">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => send(s)}
-                className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -429,6 +442,39 @@ export function Assistant() {
           </Button>
         </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Quick replies, right-aligned so they read as things *you* would say — the
+ * same side as your own messages. Wrapped rather than in a scrolling strip:
+ * a suggestion the buyer cannot see is a suggestion that does not exist.
+ */
+function QuickReplies({
+  options,
+  onPick,
+  disabled,
+}: {
+  options: string[];
+  onPick: (text: string) => void;
+  disabled?: boolean;
+}) {
+  if (!options.length) return null;
+
+  return (
+    <div className="flex flex-wrap justify-end gap-2 pl-6">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onPick(option)}
+          disabled={disabled}
+          className="rounded-full border border-indigo-200 bg-surface px-3 py-1.5 text-xs font-medium text-indigo-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50 disabled:opacity-50"
+        >
+          {option}
+        </button>
+      ))}
     </div>
   );
 }
