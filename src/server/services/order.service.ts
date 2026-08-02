@@ -137,14 +137,23 @@ export async function placeOrder(buyerId: string, input: CheckoutInput) {
 
 export async function listBuyerOrders(
   buyerId: string,
-  opts: { status?: OrderStatus; page?: number; limit?: number } = {},
+  opts: {
+    status?: OrderStatus;
+    page?: number;
+    limit?: number;
+    /** The sibling orders from one checkout — what the confirmation screen shows. */
+    checkoutGroupId?: string;
+  } = {},
 ) {
   await connectDB();
   const page = opts.page ?? 1;
   const limit = opts.limit ?? 20;
 
+  // The buyer id stays in the filter for the group lookup too, so a guessed
+  // checkoutGroupId reads nothing rather than someone else's purchase.
   const filter: Record<string, unknown> = { buyer: new Types.ObjectId(buyerId) };
   if (opts.status) filter.status = opts.status;
+  if (opts.checkoutGroupId) filter.checkoutGroupId = opts.checkoutGroupId;
 
   const [orders, total] = await Promise.all([
     Order.find(filter)
@@ -169,6 +178,63 @@ export async function getBuyerOrder(buyerId: string, orderNumber: string) {
   // owner-aware error would let anyone probe for valid order numbers.
   if (!order) throw new AppError("NOT_FOUND", "Order not found.", 404);
   return order;
+}
+
+const OPEN_STATUSES: OrderStatus[] = [
+  "pending",
+  "accepted",
+  "preparing",
+  "ready_for_dispatch",
+];
+
+/**
+ * Widget data for the buyer dashboard. Open orders are listed in full because
+ * they are the ones the buyer might act on; everything older is one click away
+ * on the orders page rather than duplicated here.
+ */
+export async function buyerDashboard(buyerId: string) {
+  await connectDB();
+  const buyer = new Types.ObjectId(buyerId);
+
+  const [counts, spend, open, recent] = await Promise.all([
+    Order.aggregate<{ _id: OrderStatus; n: number }>([
+      { $match: { buyer } },
+      { $group: { _id: "$status", n: { $sum: 1 } } },
+    ]),
+    Order.aggregate<{ _id: null; total: number }>([
+      { $match: { buyer, status: { $ne: "cancelled" } } },
+      { $group: { _id: null, total: { $sum: "$total" } } },
+    ]),
+    Order.find({ buyer, status: { $in: OPEN_STATUSES } })
+      .populate("supplier", "businessName slug")
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean(),
+    Order.find({ buyer, status: { $nin: OPEN_STATUSES } })
+      .populate("supplier", "businessName slug")
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean(),
+  ]);
+
+  const byStatus = Object.fromEntries(counts.map((c) => [c._id, c.n])) as Partial<
+    Record<OrderStatus, number>
+  >;
+  const total = counts.reduce((n, c) => n + c.n, 0);
+  const active = OPEN_STATUSES.reduce((n, s) => n + (byStatus[s] ?? 0), 0);
+
+  return {
+    stats: {
+      total,
+      active,
+      completed: byStatus.completed ?? 0,
+      cancelled: byStatus.cancelled ?? 0,
+      spend: Math.round(spend[0]?.total ?? 0),
+    },
+    byStatus,
+    openOrders: open,
+    pastOrders: recent,
+  };
 }
 
 export async function listSupplierOrders(

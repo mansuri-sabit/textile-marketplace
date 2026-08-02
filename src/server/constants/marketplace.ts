@@ -118,3 +118,43 @@ export const BUDGET_RANGES = [
 
 /** Stock at or below this many units triggers a supplier inventory alert. */
 export const LOW_STOCK_THRESHOLD = 50;
+
+/**
+ * Opening hours offered as three presets during onboarding rather than fourteen
+ * time inputs. A supplier setting up their account cares about being findable,
+ * not about encoding Tuesday to the minute — the full per-day grid belongs in
+ * the profile editor, and the schema stores that shape either way.
+ */
+function week(open: string, close: string, sundayClosed: boolean) {
+  const day = { open, close, closed: false };
+  return {
+    monday: day,
+    tuesday: day,
+    wednesday: day,
+    thursday: day,
+    friday: day,
+    saturday: day,
+    sunday: { open, close, closed: sundayClosed },
+  };
+}
+
+export const OPERATING_HOURS_PRESETS = {
+  standard: {
+    label: "Mon–Sat, 9:00–18:00 · Sunday closed",
+    hours: week("09:00", "18:00", true),
+  },
+  extended: {
+    label: "Mon–Sat, 8:00–20:00 · Sunday closed",
+    hours: week("08:00", "20:00", true),
+  },
+  allweek: {
+    label: "Every day, 9:00–18:00",
+    hours: week("09:00", "18:00", false),
+  },
+} as const;
+
+export type OperatingHoursPreset = keyof typeof OPERATING_HOURS_PRESETS;
+
+export const OPERATING_HOURS_PRESET_KEYS = Object.keys(
+  OPERATING_HOURS_PRESETS,
+) as [OperatingHoursPreset, ...OperatingHoursPreset[]];

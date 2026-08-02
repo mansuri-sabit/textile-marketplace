@@ -41,9 +41,15 @@ npm run smoke            # all three suites (needs dev server running)
 ```
 
 Smoke suites live in `scripts/` and assert against a live server:
-`smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56). **125 assertions,
-all passing as of the last commit.** They create throwaway accounts and mutate
-data; that is fine for a prototype.
+`smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56),
+`smoke:journey` (65). **190 assertions, all passing as of the last commit.**
+They create throwaway accounts, supplier profiles and orders, and mutate data;
+that is fine for a prototype.
+
+`smoke:journey` asserts on rendered pages, not just APIs — every route it hits
+returned a 404 before it existed. It also covers the token re-issue after
+onboarding, which is the one failure mode that would strand a new account in a
+redirect loop.
 
 ## Layout
 
@@ -51,8 +57,13 @@ data; that is fine for a prototype.
 src/
   app/
     (auth)/            login, register — split layout, no marketplace chrome
-    api/               23 route handlers; thin, delegate to src/server
+    api/               25 route handlers; thin, delegate to src/server
     products/          browse + detail
+    onboarding/        buyer conversational setup
+    cart/ checkout/    cart, two-step checkout, confirmation by checkout group
+    orders/            buyer order list + detail with status timeline
+    buyer/             dashboard + profile
+    supplier/          onboarding (dashboard and inventory still to build)
     page.tsx           homepage
   server/              backend, kept entirely separate from UI
     constants/         marketplace vocabulary — categories, statuses, flow
@@ -64,7 +75,7 @@ src/
     repositories/      product.repository — all catalog read queries
     services/          auth, product, cart, order, supplier
     validators/        zod schemas per domain
-  components/{ui,layout,buyer,supplier,ai}
+  components/{ui,layout,buyer,supplier,ai,onboarding}
   lib/                 client helpers: api-client, cn, image, serialize
   store/               zustand: session, cart
   types/               client-side API shapes
@@ -111,6 +122,20 @@ is terminal.
 cart, checkout and the stored order. `AddToCart.tsx` mirrors it client-side so
 the buyer sees the real unit price before committing — if you change one, change
 both.
+
+**`onboardingCompleted` is a token claim**, because `proxy.ts` runs at the edge
+with no database access. Anything that changes it must call `reissueSession`
+and re-set the cookies in the same response — otherwise the guard keeps acting
+on the stale copy for up to 15 minutes and redirects a user who has already
+finished straight back into onboarding. Both onboarding routes do this; a smoke
+assertion pins it.
+
+**Onboarding is a scripted chat, not a model call.** One engine
+(`components/onboarding/ConversationalOnboarding.tsx`) drives both roles from a
+step list. It is instant, works with no API quota, and cannot produce an enum
+value the database would reject — and the transcript shape means the LLM
+assistant can take the same screen over later without changing the interaction
+model.
 
 **Ownership is enforced inside query filters**, so another supplier's id matches
 nothing and 404s rather than partially writing. An order that is not yours
@@ -179,29 +204,37 @@ The login screen has one-tap buttons for both, so a reviewer never has to type.
 
 ## Status
 
-Done: backend (23 routes), catalog seed (105 products / 315 images / 105
+Done: backend (25 routes), catalog seed (105 products / 315 images / 105
 embeddings / 10 suppliers), design system and shell, homepage, browse with
-filters and semantic search, product detail, login and register.
+filters and semantic search, product detail, supplier directory, login and
+register, conversational onboarding for both roles, and the full buyer journey
+— cart, two-step checkout, order confirmation, order list and detail with a
+status timeline, buyer dashboard and profile.
+
+**The buyer path has no dead ends left.** `smoke:journey` sweeps every href in
+the Navbar and Footer as a signed-in buyer and fails on any non-200; add to
+that list whenever a link is added.
 
 Remaining, in priority order:
 
-1. **Cart → checkout → order confirmation → buyer dashboard.** APIs all exist
-   and are smoke-tested; this is UI only.
-2. **Supplier UI** — dashboard widgets, inventory CRUD with image upload, order
-   management with the status flow. APIs exist.
-3. **Conversational onboarding**, buyer and supplier. The brief pushes hard for
-   chat or voice instead of forms (lines 70, 109). `onboardingCompleted` and
-   `buyerPreferences` already exist on `User`; `SupplierProfile` is the target
-   for the supplier side. `proxy.ts` already redirects incomplete accounts to
-   `/onboarding` and `/supplier/onboarding` — **those routes do not exist yet**,
-   so a freshly registered user currently hits a 404. Fix this early.
-4. **AI assistant** — chat, voice, NL search, recommendations, comparison,
+1. **Supplier UI** — dashboard widgets, inventory CRUD with image upload, order
+   management with the status flow. APIs exist and are smoke-tested; the
+   Navbar links `/supplier`, `/supplier/products`, `/supplier/orders` and
+   `/supplier/profile`, and all four 404 **for a signed-in supplier**. A buyer
+   clicking them is redirected home by `proxy.ts`, which is why the link sweep
+   in `smoke:journey` passes — that sweep only covers the buyer.
+2. **AI assistant** — chat, voice, NL search, recommendations, comparison,
    similar products, Q&A. This is the single biggest differentiator and the most
    demo-able thing in the brief; do not let it get squeezed. Browser Web Speech
    API (`SpeechRecognition` + `speechSynthesis`) gives both voice directions for
    free in Chrome, which is also the demo browser. Sarvam is configured if
    Hinglish accuracy needs to be better.
-5. Mobile pass on a real device, deploy verification, demo video.
+3. Mobile pass on a real device, deploy verification, demo video.
+
+Known lint debt: `Navbar.tsx` and `ThemeToggle.tsx` trip
+`react-hooks/set-state-in-effect`. `next build` does not run eslint, so this
+does not block the deploy, but `npm run lint` is red. Both are the
+adjust-state-during-render fix already used in `CartView.tsx`.
 
 The brief calls AI a bonus (line 192) while also making it core scope (lines
 30–40). Treat it as core.

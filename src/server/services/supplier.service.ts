@@ -28,6 +28,59 @@ export async function requireSupplierProfile(userId: string) {
   return profile;
 }
 
+/**
+ * Public supplier directory.
+ *
+ * A profile with nothing listed is a dead end for a buyer — the card would open
+ * an empty catalog — so suppliers stay hidden here until they list their first
+ * product. That matters now that onboarding can create profiles.
+ */
+export async function listSupplierDirectory() {
+  await connectDB();
+
+  const suppliers = await SupplierProfile.find()
+    .select(
+      "businessName slug businessType description logoUrl address categories verified rating ratingCount minimumOrderQuantity yearEstablished",
+    )
+    .sort({ verified: -1, rating: -1 })
+    .lean();
+
+  // One grouped count beats N per-supplier queries.
+  const counts = await Product.aggregate<{ _id: unknown; count: number }>([
+    { $match: { status: { $in: ["active", "out_of_stock"] } } },
+    { $group: { _id: "$supplier", count: { $sum: 1 } } },
+  ]);
+  const countBySupplier = new Map(counts.map((c) => [String(c._id), c.count]));
+
+  return suppliers
+    .map((s) => ({ ...s, productCount: countBySupplier.get(String(s._id)) ?? 0 }))
+    .filter((s) => s.productCount > 0);
+}
+
+/** Public storefront: the profile plus its live catalog. */
+export async function getSupplierStorefront(slug: string) {
+  await connectDB();
+
+  const supplier = await SupplierProfile.findOne({ slug }).lean();
+  if (!supplier) {
+    throw new AppError("NOT_FOUND", "That supplier does not exist.", 404);
+  }
+
+  const [products, productCount] = await Promise.all([
+    Product.find({
+      supplier: supplier._id,
+      status: { $in: ["active", "out_of_stock"] },
+    })
+      .select("name slug category images pricePerUnit unit stock status rating featured")
+      .sort({ featured: -1, rating: -1 })
+      .limit(24)
+      .lean(),
+    Product.countDocuments({ supplier: supplier._id }),
+  ]);
+
+  return { supplier, products, productCount };
+}
+
 /** Slugs must be globally unique; suffix until one is free. */
 async function uniqueSlug(name: string, excludeId?: string): Promise<string> {
   const base = slugify(name);

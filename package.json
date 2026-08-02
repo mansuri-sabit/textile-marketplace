@@ -13,7 +13,8 @@
     "smoke:auth": "node scripts/smoke-auth.cjs",
     "smoke:products": "node scripts/smoke-products.cjs",
     "smoke:commerce": "node scripts/smoke-commerce.cjs",
-    "smoke": "npm run smoke:auth && npm run smoke:products && npm run smoke:commerce"
+    "smoke:journey": "node scripts/smoke-journey.cjs",
+    "smoke": "npm run smoke:auth && npm run smoke:products && npm run smoke:commerce && npm run smoke:journey"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

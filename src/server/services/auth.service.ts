@@ -135,6 +135,43 @@ export async function loginUser(
 }
 
 /**
+ * Re-mints the token pair from current user state, without a refresh token.
+ *
+ * The access token carries `onboardingCompleted`, which the edge proxy reads on
+ * every navigation. Anything that changes a claim has to call this and re-set
+ * the cookies, otherwise the guard keeps acting on the stale copy until the
+ * 15-minute access token expires.
+ */
+export async function reissueSession(
+  userId: string,
+): Promise<{ user: AuthedUser; tokens: TokenPair }> {
+  await connectDB();
+
+  const user = await User.findById(userId);
+  if (!user) throw new AppError("SESSION_EXPIRED", "Please sign in again.", 401);
+
+  const tokens = await issueTokens({
+    _id: user._id,
+    role: user.role as "buyer" | "supplier",
+    name: user.name,
+    onboardingCompleted: user.onboardingCompleted ?? false,
+    tokenVersion: user.tokenVersion ?? 0,
+  });
+
+  return {
+    user: {
+      id: String(user._id),
+      name: user.name,
+      email: user.email,
+      role: user.role as "buyer" | "supplier",
+      onboardingCompleted: user.onboardingCompleted ?? false,
+      avatarUrl: user.avatarUrl ?? undefined,
+    },
+    tokens,
+  };
+}
+
+/**
  * Exchanges a refresh token for a new pair. `tokenVersion` is re-checked
  * against the database so a logout-everywhere can invalidate tokens that have
  * not expired yet.

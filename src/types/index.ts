@@ -32,6 +32,23 @@ export type SupplierSummary = {
   address?: { city?: string; state?: string };
 };
 
+export type SupplierDirectoryEntry = {
+  _id: string;
+  businessName: string;
+  slug: string;
+  businessType?: string;
+  description?: string;
+  logoUrl?: string;
+  categories?: string[];
+  verified?: boolean;
+  rating?: number;
+  ratingCount?: number;
+  minimumOrderQuantity?: number;
+  yearEstablished?: number;
+  productCount: number;
+  address?: { city?: string; state?: string };
+};
+
 export type ProductSpecs = {
   gsm?: number;
   widthInches?: number;

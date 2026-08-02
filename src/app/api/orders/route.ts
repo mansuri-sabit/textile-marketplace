@@ -19,6 +19,8 @@ export const GET = route(async (req: NextRequest) => {
   return ok(
     await listBuyerOrders(session.sub, {
       status,
+      // `?group=` returns the sibling orders from one checkout.
+      checkoutGroupId: params.get("group") ?? undefined,
       page: Number(params.get("page")) || 1,
       limit: Math.min(Number(params.get("limit")) || 20, 50),
     }),
