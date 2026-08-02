@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "seed": "node --env-file=.env --import tsx scripts/seed.ts",
     "seed:verify": "node --env-file=.env --import tsx scripts/verify-seed.ts",
-    "smoke:auth": "node scripts/smoke-auth.cjs"
+    "smoke:auth": "node scripts/smoke-auth.cjs",
+    "smoke:products": "node scripts/smoke-products.cjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
