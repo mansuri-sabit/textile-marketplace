@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "seed": "node --env-file=.env --import tsx scripts/seed.ts",
+    "seed:verify": "node --env-file=.env --import tsx scripts/verify-seed.ts",
+    "smoke:auth": "node scripts/smoke-auth.cjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

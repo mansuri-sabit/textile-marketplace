@@ -38,6 +38,7 @@ const schema = z.object({
   SARVAM_STT_MODEL: z.string().default("saarika:v2"),
   SARVAM_TTS_MODEL: z.string().default("bulbul:v2"),
 
+  PEXELS_API_KEY: z.string().optional(),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),

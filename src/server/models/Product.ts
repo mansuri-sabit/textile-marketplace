@@ -61,6 +61,23 @@ const productSchema = new Schema(
         message: "A product needs between 1 and 8 images",
       },
     },
+    /**
+     * Photographer attribution for seeded catalog imagery. Pexels does not
+     * require credit, but the API application promised it, so the product page
+     * renders it. Empty for supplier-uploaded images.
+     */
+    imageCredits: {
+      type: [
+        new Schema(
+          {
+            photographer: { type: String, required: true },
+            sourceUrl: { type: String, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     colors: { type: [colorSchema], default: [] },
     specifications: { type: specificationsSchema, default: () => ({}) },
 
@@ -103,6 +120,23 @@ const productSchema = new Schema(
      * 384-float array to the browser on a 24-item grid is pure waste.
      */
     embedding: { type: [Number], select: false, default: undefined },
+    /**
+     * Which provider produced `embedding`. HF and OpenAI vectors have different
+     * dimensions and are not comparable, so a similarity search must be able to
+     * detect that the catalog was seeded with a different provider than the one
+     * now embedding the query.
+     */
+    embeddingMeta: {
+      type: new Schema(
+        {
+          provider: { type: String, enum: ["huggingface", "openai"] },
+          dim: { type: Number },
+        },
+        { _id: false },
+      ),
+      select: false,
+      default: undefined,
+    },
   },
   { timestamps: true, toJSON: { virtuals: true } },
 );
