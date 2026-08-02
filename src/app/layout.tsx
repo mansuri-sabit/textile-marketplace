@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Assistant } from "@/components/ai/Assistant";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
 import { SessionBootstrap } from "@/components/layout/SessionBootstrap";
@@ -53,6 +54,8 @@ export default function RootLayout({
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />
+        {/* Available on every buyer-facing page; hides itself for suppliers. */}
+        <Assistant />
       </body>
     </html>
   );

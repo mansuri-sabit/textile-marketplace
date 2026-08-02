@@ -42,7 +42,7 @@ npm run smoke            # all three suites (needs dev server running)
 
 Smoke suites live in `scripts/` and assert against a live server:
 `smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56),
-`smoke:journey` (86). **211 assertions, all passing as of the last commit.**
+`smoke:journey` (104). **229 assertions, all passing as of the last commit.**
 They create throwaway accounts, supplier profiles and orders, and mutate data;
 that is fine for a prototype.
 
@@ -60,6 +60,7 @@ src/
     api/               25 route handlers; thin, delegate to src/server
     products/          browse + detail
     onboarding/        buyer conversational setup
+    suppliers/         public directory + storefronts
     cart/ checkout/    cart, two-step checkout, confirmation by checkout group
     orders/            buyer order list + detail with status timeline
     buyer/             dashboard + profile
@@ -149,6 +150,20 @@ shape; the create schema extends it with defaults, the update schema
 republishes a listing the supplier deliberately unlisted — `updateStock` reads
 the current status first and preserves `draft`.
 
+**The assistant retrieves first and generates second.** Every question runs
+through the same semantic search the catalog uses; the model is handed only
+those rows and forbidden from going beyond them. Two consequences worth
+keeping: product cards are rendered from the retrieved rows, never parsed out
+of the reply, so a hallucinated fabric can never become a clickable card at a
+fake price — and when no chat provider answers, retrieval already succeeded, so
+`askAssistant` falls back to a deterministic reply and flags `generated: false`
+rather than erroring. On demo day that beats any amount of prompt tuning.
+
+Grounding is formatted as `key: value` records, not prose. Handed a fluent
+one-line summary, an 8B model echoes it back verbatim instead of answering.
+`[n]` markers are stripped from the reply server-side — a rule not to echo them
+holds most of the time, and most of the time is not a standard worth shipping.
+
 **Ownership is enforced inside query filters**, so another supplier's id matches
 nothing and 404s rather than partially writing. An order that is not yours
 returns the same 404 as one that does not exist, so order numbers cannot be
@@ -223,7 +238,10 @@ register, conversational onboarding for both roles, the full buyer journey —
 cart, two-step checkout, order confirmation, order list and detail with a
 status timeline, dashboard and profile — and the supplier console: dashboard,
 inventory CRUD with browser-direct image upload, order management driving
-`ORDER_STATUS_FLOW`, and the business profile.
+`ORDER_STATUS_FLOW`, and the business profile. The AI assistant covers all
+seven asks in the brief: conversational chat, voice both ways, natural-language
+search, recommendations personalised from `buyerPreferences`, comparison,
+similar products and per-product Q&A.
 
 **Both roles are clickable end to end.** `smoke:journey` sweeps every href in
 the Navbar, Footer and supplier console and fails on any non-200; add to those
@@ -231,13 +249,10 @@ lists whenever a link is added.
 
 Remaining, in priority order:
 
-1. **AI assistant** — chat, voice, NL search, recommendations, comparison,
-   similar products, Q&A. This is the single biggest differentiator and the most
-   demo-able thing in the brief; do not let it get squeezed. Browser Web Speech
-   API (`SpeechRecognition` + `speechSynthesis`) gives both voice directions for
-   free in Chrome, which is also the demo browser. Sarvam is configured if
-   Hinglish accuracy needs to be better.
-2. Mobile pass on a real device, deploy verification, demo video.
+1. Mobile pass on a real device, deploy verification, demo video.
+2. Optional polish: Sarvam is configured if Chrome's Hinglish speech
+   recognition proves weak on demo day — it would slot in behind `useSpeech`
+   without the panel changing.
 
 Known lint debt: `Navbar.tsx` and `ThemeToggle.tsx` trip
 `react-hooks/set-state-in-effect`. `next build` does not run eslint, so this

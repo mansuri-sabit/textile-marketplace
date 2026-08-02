@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, ChevronRight, MapPin, Package, Star } from "lucide-react";
+import { AskAboutProduct } from "@/components/ai/AskAboutProduct";
 import { AddToCart } from "@/components/buyer/AddToCart";
 import { ProductCard } from "@/components/buyer/ProductCard";
 import { ProductGallery } from "@/components/buyer/ProductGallery";
@@ -147,6 +148,10 @@ export default async function ProductPage({
           <hr className="my-7 border-line" />
 
           <AddToCart product={product} />
+
+          <div className="mt-7">
+            <AskAboutProduct slug={product.slug} />
+          </div>
 
           <Link
             href={`/suppliers/${product.supplier.slug}`}

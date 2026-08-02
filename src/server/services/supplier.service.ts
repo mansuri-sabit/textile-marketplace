@@ -67,11 +67,16 @@ export async function getSupplierStorefront(slug: string) {
   }
 
   const [products, productCount] = await Promise.all([
+    // The field list has to satisfy `ProductCard`, which the storefront grid
+    // shares with the catalog — a short select renders "MOQ undefined".
     Product.find({
       supplier: supplier._id,
       status: { $in: ["active", "out_of_stock"] },
     })
-      .select("name slug category images pricePerUnit unit stock status rating featured")
+      .select(
+        "name slug category fabricType images pricePerUnit unit stock status rating ratingCount featured minimumOrderQuantity specifications.gsm specifications.composition",
+      )
+      .populate("supplier", "businessName slug verified rating address.city")
       .sort({ featured: -1, rating: -1 })
       .limit(24)
       .lean(),

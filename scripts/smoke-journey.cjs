@@ -284,6 +284,80 @@ const SUPPLIER_ANSWERS = {
     check(`${href} -> no dead end`, res.status === 200, res.status);
   }
 
+  console.log("\n== assistant ==");
+  /**
+   * The assistant is retrieval-grounded: the cards come from the database, so
+   * they must be real rows regardless of what the model wrote. These assertions
+   * hold whether or not a chat provider answered — `generated: false` is a
+   * supported state, not a failure.
+   */
+  r = await call("POST", "/api/assistant", {
+    messages: [
+      { role: "user", content: "lightweight breathable cotton for summer shirting" },
+    ],
+  });
+  check("assistant answers -> 200", r.status === 200, r.payload?.error);
+  check("reply is non-empty", (r.payload?.data?.reply ?? "").length > 10);
+  check("grounded in real products", r.payload?.data?.products?.length > 0, r.payload?.data?.products?.length);
+  check(
+    "every card is a real catalog row",
+    (r.payload?.data?.products ?? []).every((p) => p._id && p.slug && p.pricePerUnit > 0),
+  );
+  check(
+    "grounding markers stripped from the prose",
+    !/\[\d+\]/.test(r.payload?.data?.reply ?? ""),
+    r.payload?.data?.reply,
+  );
+  check("deep link to the full search", Boolean(r.payload?.data?.searchUrl));
+  check("follow-up suggestions offered", r.payload?.data?.suggestions?.length > 0);
+
+  const suggested = r.payload?.data?.products?.[0]?.slug;
+
+  r = await call("POST", "/api/assistant", {
+    messages: [{ role: "user", content: "what is this best used for?" }],
+    productSlug: suggested,
+  });
+  check("product Q&A -> 200", r.status === 200, r.payload?.error);
+  check("product Q&A anchors on that fabric", r.payload?.data?.mode === "product", r.payload?.data?.mode);
+  check(
+    "the anchored fabric is first",
+    r.payload?.data?.products?.[0]?.slug === suggested,
+    r.payload?.data?.products?.[0]?.slug,
+  );
+
+  const two = (await call("GET", "/api/products?limit=2")).payload?.data?.products ?? [];
+  r = await call("POST", "/api/assistant", {
+    messages: [{ role: "user", content: "compare these" }],
+    compareSlugs: two.map((p) => p.slug),
+  });
+  check("comparison -> 200", r.status === 200, r.payload?.error);
+  check("comparison mode engaged", r.payload?.data?.mode === "compare", r.payload?.data?.mode);
+  check("both fabrics retrieved", r.payload?.data?.products?.length === 2, r.payload?.data?.products?.length);
+
+  r = await call("POST", "/api/assistant", { messages: [] });
+  check("empty conversation -> 422", r.status === 422, r.status);
+
+  r = await call("POST", "/api/assistant", {
+    messages: [{ role: "user", content: "x".repeat(1500) }],
+  });
+  check("over-long message -> 422", r.status === 422, r.status);
+
+  console.log("\n== in-page links ==");
+  // Not in the nav, but on the two most travelled pages in the journey.
+  const anyProduct = (await call("GET", "/api/products?limit=1")).payload?.data?.products?.[0];
+  for (const href of [
+    `/products/${anyProduct.slug}`,
+    `/suppliers/${anyProduct.supplier.slug}`,
+  ]) {
+    const res = await attempt(() =>
+      fetch(BASE + href, { headers: { Cookie: cookieHeader() }, redirect: "follow" }),
+    );
+    check(`${href} -> no dead end`, res.status === 200, res.status);
+  }
+
+  p = await page("/suppliers/not-a-real-supplier");
+  check("unknown supplier storefront -> 404", p.status === 404, p.status);
+
   console.log("\n== cross-role guards ==");
   r = await call("POST", "/api/supplier/onboarding", SUPPLIER_ANSWERS);
   check("buyer cannot run supplier onboarding -> 403", r.status === 403, r.payload);
