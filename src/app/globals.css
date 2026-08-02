@@ -1,26 +1,193 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Design tokens.
+ *
+ * The palette is built around warm neutrals rather than pure grey — a fabric
+ * marketplace reads better on paper tones than on cold UI grey. Indigo is the
+ * primary because it is the dye this industry is built on; terracotta is the
+ * single accent and is reserved for things that need to interrupt.
+ */
+@theme {
+  --color-paper: #fbfaf8;
+  --color-surface: #ffffff;
+  --color-raised: #f6f4f0;
+  --color-line: #e7e3dc;
+  --color-line-strong: #d6d0c6;
+
+  --color-ink: #1c1a17;
+  --color-ink-muted: #6b6459;
+  --color-ink-subtle: #948c7f;
+
+  --color-indigo-50: #eef1f8;
+  --color-indigo-100: #dbe1f0;
+  --color-indigo-200: #b8c3e0;
+  --color-indigo-400: #6076b3;
+  --color-indigo-500: #3f5697;
+  --color-indigo-600: #32457c;
+  --color-indigo-700: #283861;
+  --color-indigo-900: #1a2440;
+
+  --color-clay-50: #fdf3ee;
+  --color-clay-100: #f9e2d6;
+  --color-clay-500: #c2653a;
+  --color-clay-600: #a5502b;
+
+  --color-moss-50: #eef4ee;
+  --color-moss-500: #4f7d55;
+  --color-moss-600: #3f6544;
+
+  --color-amber-50: #fdf5e6;
+  --color-amber-500: #b8862c;
+
+  --color-rose-50: #fdeeee;
+  --color-rose-500: #b3453f;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-card: 0.875rem;
+
+  --shadow-card: 0 1px 2px rgb(28 26 23 / 0.04), 0 4px 16px -8px rgb(28 26 23 / 0.10);
+  --shadow-raised: 0 2px 4px rgb(28 26 23 / 0.05), 0 12px 32px -12px rgb(28 26 23 / 0.16);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/*
+ * Dark mode is opt-in via a class on <html> rather than prefers-color-scheme,
+ * so the header toggle can override the OS setting instead of fighting it.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
+  --color-paper: #14130f;
+  --color-surface: #1c1a16;
+  --color-raised: #24211c;
+  --color-line: #322e27;
+  --color-line-strong: #443f36;
+
+  --color-ink: #f2efe9;
+  --color-ink-muted: #a9a294;
+  --color-ink-subtle: #7d7668;
+
+  --color-indigo-50: #1a2440;
+  --color-indigo-100: #22304f;
+  --color-indigo-200: #2d3f66;
+  --color-indigo-400: #8496cc;
+  --color-indigo-500: #a4b3dd;
+  --color-indigo-600: #b8c3e0;
+  --color-indigo-700: #cdd5ec;
+  --color-indigo-900: #e4e9f5;
+
+  --color-clay-50: #33201a;
+  --color-clay-100: #46291f;
+  --color-clay-500: #e08b5e;
+  --color-clay-600: #eda878;
+
+  --color-moss-50: #1d2a1f;
+  --color-moss-500: #7cae83;
+  --color-moss-600: #93c199;
+
+  --color-amber-50: #2e2515;
+  --color-amber-500: #d9ac5c;
+
+  --color-rose-50: #331c1b;
+  --color-rose-500: #e08682;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Visible focus for keyboard users only — mouse clicks stay clean. */
+  :focus-visible {
+    outline: 2px solid var(--color-indigo-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: var(--color-indigo-100);
+    color: var(--color-indigo-900);
+  }
+
+  /* Tabular figures stop prices and quantities jittering as they change. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.015em;
+  }
+
+  /* Fades the edge of a horizontally scrolling row so it reads as scrollable. */
+  .fade-edge-r {
+    mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-raised);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.35),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+  .dark .skeleton::after {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.06),
+      transparent
+    );
+  }
+}
+
+/* Honour the OS setting for users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
