@@ -1,6 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Boxes, MapPin, Ruler, Truck } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Boxes,
+  Grid2x2,
+  Layers,
+  MapPin,
+  Ruler,
+  Truck,
+  Users,
+} from "lucide-react";
 import { ProductCard } from "@/components/buyer/ProductCard";
 import { HeroSearch } from "@/components/buyer/HeroSearch";
 import { Badge, LinkButton, SectionHeading } from "@/components/ui";
@@ -82,12 +92,37 @@ export default async function HomePage() {
   return (
     <>
       <section className="relative overflow-hidden border-b border-line">
+        {/*
+          A fixed brand photograph rather than a catalog listing — the hero
+          should read the same on every revalidation instead of changing with
+          whatever is featured today. It bleeds off the right edge and fades
+          into the page, so the headline keeps its contrast without a scrim
+          over the image. The focal point sits right of centre in the source,
+          so the crop is nudged across to keep the fabric stack in frame.
+        */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,var(--color-indigo-50),transparent_70%)]"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[46%] lg:block"
+        >
+          <Image
+            src="/hero-fabrics.jpg"
+            alt=""
+            fill
+            sizes="46vw"
+            priority
+            className="object-cover object-[62%_center]"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-paper via-paper/55 to-transparent" />
+          <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-paper to-transparent" />
+        </div>
+
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(55%_45%_at_15%_0%,var(--color-indigo-50),transparent_70%)]"
         />
+
         <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <div className="flex flex-col items-center text-center">
+          <div className="lg:max-w-[58%]">
             <Badge tone="indigo" className="mb-5">
               <Boxes className="size-3" />
               {formatCompact(stats.productCount)} fabrics from {stats.supplierCount} verified
@@ -105,21 +140,55 @@ export default async function HomePage() {
               making.
             </p>
 
-            <div className="mt-9 flex w-full justify-center">
+            <div className="mt-9">
               <HeroSearch />
             </div>
 
-            <dl className="mt-12 grid w-full max-w-2xl grid-cols-3 gap-4 border-t border-line pt-8">
+            {/* Mobile gets the photograph as a band rather than losing it —
+                it is what tells you this is a fabric marketplace. */}
+            <div className="relative mt-10 aspect-[16/9] overflow-hidden rounded-card lg:hidden">
+              <Image
+                src="/hero-fabrics.jpg"
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover"
+              />
+            </div>
+
+            <dl className="mt-10 grid grid-cols-3 divide-x divide-line rounded-card border border-line bg-surface/70 backdrop-blur-sm">
               {[
-                { label: "Fabrics listed", value: formatCompact(stats.productCount) },
-                { label: "Verified suppliers", value: String(stats.supplierCount) },
-                { label: "Textile clusters", value: "8" },
+                {
+                  label: "Fabrics listed",
+                  value: formatCompact(stats.productCount),
+                  icon: <Layers className="size-4" />,
+                },
+                {
+                  label: "Verified suppliers",
+                  value: String(stats.supplierCount),
+                  icon: <Users className="size-4" />,
+                },
+                {
+                  label: "Textile clusters",
+                  value: "8",
+                  icon: <Grid2x2 className="size-4" />,
+                },
               ].map((stat) => (
-                <div key={stat.label}>
-                  <dd className="font-display text-2xl text-ink tnum sm:text-3xl">
-                    {stat.value}
-                  </dd>
-                  <dt className="mt-1 text-xs text-ink-subtle sm:text-sm">{stat.label}</dt>
+                <div
+                  key={stat.label}
+                  className="flex items-center gap-3 px-3 py-4 sm:px-5"
+                >
+                  <span className="hidden size-10 shrink-0 place-items-center rounded-full bg-raised text-ink-muted sm:grid">
+                    {stat.icon}
+                  </span>
+                  <span className="min-w-0">
+                    <dd className="font-display text-2xl leading-none text-ink tnum sm:text-[28px]">
+                      {stat.value}
+                    </dd>
+                    <dt className="mt-1.5 truncate text-[11px] text-ink-subtle sm:text-xs">
+                      {stat.label}
+                    </dt>
+                  </span>
                 </div>
               ))}
             </dl>
