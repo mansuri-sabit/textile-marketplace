@@ -271,6 +271,23 @@ export async function listSupplierOrders(
   };
 }
 
+/**
+ * One incoming order for the supplier's detail screen. Same ownership-in-the-
+ * filter rule as the buyer side: not yours reads as not found.
+ */
+export async function getSupplierOrder(supplierId: string, orderNumber: string) {
+  await connectDB();
+  const order = await Order.findOne({
+    orderNumber,
+    supplier: new Types.ObjectId(supplierId),
+  })
+    .populate("buyer", "name email phone")
+    .lean();
+
+  if (!order) throw new AppError("NOT_FOUND", "Order not found.", 404);
+  return order;
+}
+
 export async function updateOrderStatus(
   supplierId: string,
   orderNumber: string,

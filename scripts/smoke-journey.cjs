@@ -331,6 +331,94 @@ const SUPPLIER_ANSWERS = {
     got: r.payload?.data?.user?.profile?.slug,
   });
 
+  console.log("\n== supplier console ==");
+  for (const href of [
+    "/supplier",
+    "/supplier/products",
+    "/supplier/products/new",
+    "/supplier/orders",
+    "/supplier/profile",
+  ]) {
+    const res = await attempt(() =>
+      fetch(BASE + href, { headers: { Cookie: cookieHeader() }, redirect: "follow" }),
+    );
+    check(`${href} -> no dead end`, res.status === 200, res.status);
+  }
+
+  console.log("\n== supplier inventory lifecycle ==");
+  const listing = {
+    name: `Smoke Poplin ${stamp}`,
+    description:
+      "A tightly woven combed cotton poplin created by the journey smoke test.",
+    category: "Cotton",
+    fabricType: "Woven",
+    images: ["https://res.cloudinary.com/demo/image/upload/sample.jpg"],
+    pricePerUnit: 240,
+    unit: "metre",
+    stock: 800,
+    minimumOrderQuantity: 100,
+    status: "active",
+  };
+
+  r = await call("POST", "/api/supplier/products", listing);
+  check("create listing -> 201", r.status === 201, r.payload);
+  const productId = r.payload?.data?.product?.id ?? r.payload?.data?.product?._id;
+  check("product id returned", Boolean(productId));
+
+  p = await page(`/supplier/products/${productId}/edit`);
+  check("edit page renders", p.status === 200, p.status);
+  check("edit form is prefilled", p.html.includes(listing.name), listing.name);
+
+  // A PATCH must leave out what it does not mention. Zod defaults surviving
+  // `.partial()` once made an unrelated field update zero the stock and wipe
+  // the tags, which is silent data loss.
+  r = await call("PATCH", `/api/supplier/products/${productId}`, {
+    name: `${listing.name} Mk II`,
+  });
+  const patched = r.payload?.data?.product;
+  check("partial update keeps stock", patched?.stock === listing.stock, patched?.stock);
+  check(
+    "partial update keeps MOQ",
+    patched?.minimumOrderQuantity === listing.minimumOrderQuantity,
+    patched?.minimumOrderQuantity,
+  );
+  check("partial update keeps unit", patched?.unit === listing.unit, patched?.unit);
+  check("partial update applies the change", patched?.name?.endsWith("Mk II"), patched?.name);
+
+  r = await call("PATCH", `/api/supplier/products/${productId}`, { status: "draft" });
+  check("unlist -> draft", r.payload?.data?.product?.status === "draft", r.payload?.data?.product?.status);
+
+  // The inventory table edits stock and status independently, so restocking an
+  // unlisted product must not silently republish it.
+  r = await call("PATCH", `/api/supplier/products/${productId}/stock`, { stock: 1200 });
+  check(
+    "restocking keeps a draft unlisted",
+    r.payload?.data?.product?.status === "draft",
+    r.payload?.data?.product?.status,
+  );
+
+  r = await call("PATCH", `/api/supplier/products/${productId}`, { status: "active" });
+  check("republish -> active", r.payload?.data?.product?.status === "active");
+
+  r = await call("PATCH", `/api/supplier/products/${productId}/stock`, { stock: 0 });
+  check(
+    "zero stock flips an active listing out of stock",
+    r.payload?.data?.product?.status === "out_of_stock",
+    r.payload?.data?.product?.status,
+  );
+
+  r = await call("DELETE", `/api/supplier/products/${productId}`);
+  check("delete listing -> 200", r.status === 200, r.payload);
+
+  p = await page(`/supplier/products/${productId}/edit`);
+  check("deleted listing 404s", p.status === 404, p.status);
+
+  p = await page("/supplier/products/not-a-real-id/edit");
+  check("malformed product id -> 404", p.status === 404, p.status);
+
+  p = await page("/supplier/orders/TM-DOESNOTEXIST");
+  check("unknown supplier order -> 404", p.status === 404, p.status);
+
   console.log(`\n---- ${pass} passed, ${fail} failed ----\n`);
   process.exit(fail ? 1 : 0);
 })();

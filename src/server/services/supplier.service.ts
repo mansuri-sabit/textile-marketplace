@@ -153,6 +153,43 @@ export async function listSupplierProducts(
   return { products, total, page, pages: Math.max(1, Math.ceil(total / limit)) };
 }
 
+/**
+ * A single product for the edit screen. The supplier id is part of the filter,
+ * so another supplier's id matches nothing and 404s rather than leaking a row.
+ */
+export async function getSupplierProduct(supplierId: string, productId: string) {
+  await connectDB();
+
+  if (!Types.ObjectId.isValid(productId)) {
+    throw new AppError("NOT_FOUND", "Product not found.", 404);
+  }
+
+  const product = await Product.findOne({
+    _id: new Types.ObjectId(productId),
+    supplier: new Types.ObjectId(supplierId),
+  }).lean();
+
+  if (!product) throw new AppError("NOT_FOUND", "Product not found.", 404);
+  return product;
+}
+
+/** The full supplier profile, for the business profile screen. */
+export async function getSupplierProfile(userId: string) {
+  await connectDB();
+  const profile = await SupplierProfile.findOne({
+    user: new Types.ObjectId(userId),
+  }).lean();
+
+  if (!profile) {
+    throw new AppError(
+      "PROFILE_INCOMPLETE",
+      "Finish setting up your business profile first.",
+      409,
+    );
+  }
+  return profile;
+}
+
 export async function createProduct(supplierId: string, input: ProductInput) {
   await connectDB();
 
@@ -227,9 +264,27 @@ export async function deleteProduct(supplierId: string, productId: string) {
 /** Quick stock edit from the inventory table, without a full product update. */
 export async function updateStock(supplierId: string, productId: string, stock: number) {
   await connectDB();
+
+  const filter = {
+    _id: new Types.ObjectId(productId),
+    supplier: new Types.ObjectId(supplierId),
+  };
+
+  const existing = await Product.findOne(filter).select("status").lean();
+  if (!existing) throw new AppError("NOT_FOUND", "Product not found.", 404);
+
+  // Restocking must not publish a listing the supplier deliberately unlisted —
+  // `draft` is a decision, `out_of_stock` is a consequence.
+  const status =
+    existing.status === "draft"
+      ? "draft"
+      : stock === 0
+        ? "out_of_stock"
+        : "active";
+
   const product = await Product.findOneAndUpdate(
-    { _id: new Types.ObjectId(productId), supplier: new Types.ObjectId(supplierId) },
-    { $set: { stock, status: stock === 0 ? "out_of_stock" : "active" } },
+    filter,
+    { $set: { stock, status } },
     { returnDocument: "after" },
   ).lean();
 

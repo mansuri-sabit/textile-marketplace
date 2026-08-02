@@ -64,7 +64,15 @@ export function parseProductQuery(params: URLSearchParams): ProductQuery {
 
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour");
 
-export const productInputSchema = z.object({
+/**
+ * The product shape with **no defaults**.
+ *
+ * Defaults belong to creation only. `.partial()` does not strip them, so a
+ * schema carrying `stock: 0` and `tags: []` would silently zero the stock and
+ * wipe the tags of any PATCH that did not mention them — a partial update that
+ * quietly destroys the fields it was not given.
+ */
+const productShape = z.object({
   name: z.string().trim().min(3, "Name is too short").max(180),
   description: z.string().trim().min(20, "Describe the fabric in a bit more detail").max(4000),
   category: z.enum(PRODUCT_CATEGORIES),
@@ -72,24 +80,19 @@ export const productInputSchema = z.object({
   images: z.array(z.string().url()).min(1, "Add at least one image").max(8),
   colors: z
     .array(z.object({ name: z.string().trim().min(1), hex: hexColor, inStock: z.boolean().default(true) }))
-    .max(12)
-    .default([]),
-  specifications: z
-    .object({
-      gsm: z.coerce.number().min(0).optional(),
-      widthInches: z.coerce.number().min(0).optional(),
-      composition: z.string().trim().max(200).optional(),
-      weave: z.string().trim().max(100).optional(),
-      finish: z.string().trim().max(200).optional(),
-      shrinkage: z.string().trim().max(100).optional(),
-      careInstructions: z.string().trim().max(300).optional(),
-      certifications: z.array(z.string().trim().max(80)).max(10).default([]),
-    })
-    // The default has to satisfy the *output* type, which already required
-    // certifications because of the inner .default([]).
-    .default({ certifications: [] }),
+    .max(12),
+  specifications: z.object({
+    gsm: z.coerce.number().min(0).optional(),
+    widthInches: z.coerce.number().min(0).optional(),
+    composition: z.string().trim().max(200).optional(),
+    weave: z.string().trim().max(100).optional(),
+    finish: z.string().trim().max(200).optional(),
+    shrinkage: z.string().trim().max(100).optional(),
+    careInstructions: z.string().trim().max(300).optional(),
+    certifications: z.array(z.string().trim().max(80)).max(10).default([]),
+  }),
   pricePerUnit: z.coerce.number().min(1, "Price is required"),
-  unit: z.enum(PRICING_UNITS).default("metre"),
+  unit: z.enum(PRICING_UNITS),
   bulkTiers: z
     .array(
       z.object({
@@ -97,15 +100,31 @@ export const productInputSchema = z.object({
         pricePerUnit: z.coerce.number().min(0),
       }),
     )
-    .max(5)
-    .default([]),
-  stock: z.coerce.number().int().min(0).default(0),
-  minimumOrderQuantity: z.coerce.number().int().min(1).default(1),
-  status: z.enum(PRODUCT_STATUSES).default("active"),
-  tags: z.array(z.string().trim().max(40)).max(20).default([]),
+    .max(5),
+  stock: z.coerce.number().int().min(0),
+  minimumOrderQuantity: z.coerce.number().int().min(1),
+  status: z.enum(PRODUCT_STATUSES),
+  tags: z.array(z.string().trim().max(40)).max(20),
+});
+
+/** Creation: the optional half of a listing falls back to sensible defaults. */
+export const productInputSchema = productShape.extend({
+  colors: productShape.shape.colors.default([]),
+  // The default has to satisfy the *output* type, which already required
+  // certifications because of the inner .default([]).
+  specifications: productShape.shape.specifications.default({ certifications: [] }),
+  unit: productShape.shape.unit.default("metre"),
+  bulkTiers: productShape.shape.bulkTiers.default([]),
+  stock: productShape.shape.stock.default(0),
+  minimumOrderQuantity: productShape.shape.minimumOrderQuantity.default(1),
+  status: productShape.shape.status.default("active"),
+  tags: productShape.shape.tags.default([]),
 });
 
 export type ProductInput = z.infer<typeof productInputSchema>;
 
-/** Every field optional for PATCH, but each still validated if present. */
-export const productUpdateSchema = productInputSchema.partial();
+/**
+ * PATCH: every field optional, each still validated if present, and a field
+ * left out stays exactly as it was.
+ */
+export const productUpdateSchema = productShape.partial();

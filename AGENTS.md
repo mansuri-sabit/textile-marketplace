@@ -42,7 +42,7 @@ npm run smoke            # all three suites (needs dev server running)
 
 Smoke suites live in `scripts/` and assert against a live server:
 `smoke:auth` (27), `smoke:products` (42), `smoke:commerce` (56),
-`smoke:journey` (65). **190 assertions, all passing as of the last commit.**
+`smoke:journey` (86). **211 assertions, all passing as of the last commit.**
 They create throwaway accounts, supplier profiles and orders, and mutate data;
 that is fine for a prototype.
 
@@ -63,7 +63,8 @@ src/
     cart/ checkout/    cart, two-step checkout, confirmation by checkout group
     orders/            buyer order list + detail with status timeline
     buyer/             dashboard + profile
-    supplier/          onboarding (dashboard and inventory still to build)
+    supplier/          onboarding, plus (console)/ — dashboard, inventory
+                       CRUD, order management, business profile
     page.tsx           homepage
   server/              backend, kept entirely separate from UI
     constants/         marketplace vocabulary — categories, statuses, flow
@@ -137,6 +138,17 @@ value the database would reject — and the transcript shape means the LLM
 assistant can take the same screen over later without changing the interaction
 model.
 
+**Zod defaults belong to create schemas only.** `.partial()` does *not* strip
+them, so `productInputSchema.partial()` used to apply `stock: 0` and `tags: []`
+to any PATCH that omitted them — an unrelated field edit silently zeroed the
+stock. `productShape` in `validators/product.ts` now holds the defaultless
+shape; the create schema extends it with defaults, the update schema
+`.partial()`s it. Any new update schema must be built the same way.
+
+**`draft` is a decision, `out_of_stock` is a consequence.** Restocking never
+republishes a listing the supplier deliberately unlisted — `updateStock` reads
+the current status first and preserves `draft`.
+
 **Ownership is enforced inside query filters**, so another supplier's id matches
 nothing and 404s rather than partially writing. An order that is not yours
 returns the same 404 as one that does not exist, so order numbers cannot be
@@ -207,29 +219,25 @@ The login screen has one-tap buttons for both, so a reviewer never has to type.
 Done: backend (25 routes), catalog seed (105 products / 315 images / 105
 embeddings / 10 suppliers), design system and shell, homepage, browse with
 filters and semantic search, product detail, supplier directory, login and
-register, conversational onboarding for both roles, and the full buyer journey
-— cart, two-step checkout, order confirmation, order list and detail with a
-status timeline, buyer dashboard and profile.
+register, conversational onboarding for both roles, the full buyer journey —
+cart, two-step checkout, order confirmation, order list and detail with a
+status timeline, dashboard and profile — and the supplier console: dashboard,
+inventory CRUD with browser-direct image upload, order management driving
+`ORDER_STATUS_FLOW`, and the business profile.
 
-**The buyer path has no dead ends left.** `smoke:journey` sweeps every href in
-the Navbar and Footer as a signed-in buyer and fails on any non-200; add to
-that list whenever a link is added.
+**Both roles are clickable end to end.** `smoke:journey` sweeps every href in
+the Navbar, Footer and supplier console and fails on any non-200; add to those
+lists whenever a link is added.
 
 Remaining, in priority order:
 
-1. **Supplier UI** — dashboard widgets, inventory CRUD with image upload, order
-   management with the status flow. APIs exist and are smoke-tested; the
-   Navbar links `/supplier`, `/supplier/products`, `/supplier/orders` and
-   `/supplier/profile`, and all four 404 **for a signed-in supplier**. A buyer
-   clicking them is redirected home by `proxy.ts`, which is why the link sweep
-   in `smoke:journey` passes — that sweep only covers the buyer.
-2. **AI assistant** — chat, voice, NL search, recommendations, comparison,
+1. **AI assistant** — chat, voice, NL search, recommendations, comparison,
    similar products, Q&A. This is the single biggest differentiator and the most
    demo-able thing in the brief; do not let it get squeezed. Browser Web Speech
    API (`SpeechRecognition` + `speechSynthesis`) gives both voice directions for
    free in Chrome, which is also the demo browser. Sarvam is configured if
    Hinglish accuracy needs to be better.
-3. Mobile pass on a real device, deploy verification, demo video.
+2. Mobile pass on a real device, deploy verification, demo video.
 
 Known lint debt: `Navbar.tsx` and `ThemeToggle.tsx` trip
 `react-hooks/set-state-in-effect`. `next build` does not run eslint, so this
@@ -244,6 +252,10 @@ The brief calls AI a bonus (line 192) while also making it core scope (lines
 - **Restart the dev server after adding server modules.** Turbopack served stale
   code and semantic search silently fell back to keyword — three smoke tests red
   with no bug in the code.
+- **Never run `next build` and `next dev` against the same `.next`.** The dev
+  Turbopack cache gets corrupted and *every* route starts returning a 500
+  (`Unable to open static sorted file … .sst`). It looks like the app is broken;
+  it is not. Stop the dev server, delete `.next`, start it again.
 - **Never edit files with PowerShell string replacement.** `Get-Content -Raw`
   reads UTF-8 as ANSI and mangles em-dashes and `₹` into mojibake. Use the Edit
   tool.
