@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const COLUMNS = [
@@ -48,9 +49,15 @@ export function Footer() {
                   />
                 </svg>
               </span>
-              <span className="font-display text-lg text-ink">
-                Textile<span className="text-indigo-500">Mart</span>
-              </span>
+              {/* Same treatment as the header: the wordmark is dark ink on
+                  transparency, so dark mode flattens it to white. */}
+              <Image
+                src="/logo.png"
+                alt="TextileMart"
+                width={739}
+                height={128}
+                className="h-[22px] w-auto dark:brightness-0 dark:invert"
+              />
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-ink-muted">
               A B2B fabric marketplace connecting mills, handloom collectives and

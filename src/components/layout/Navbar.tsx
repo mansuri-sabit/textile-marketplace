@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,7 +16,6 @@ import {
   User,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/cn";
 import { useCart } from "@/store/cart";
 import { useSession } from "@/store/session";
 import { ThemeToggle } from "./ThemeToggle";
@@ -96,9 +96,21 @@ export function Navbar() {
               />
             </svg>
           </span>
-          <span className="font-display text-lg leading-none text-ink">
-            Textile<span className="text-indigo-500">Mart</span>
-          </span>
+          {/*
+            The supplied wordmark is dark ink and indigo on transparency, which
+            disappears against the dark theme — `brightness-0 invert` flattens it
+            to white there rather than shipping a second file. `alt` carries the
+            brand name, so the header still reads as TextileMart to a screen
+            reader and when images fail.
+          */}
+          <Image
+            src="/logo.png"
+            alt="TextileMart"
+            width={739}
+            height={128}
+            priority
+            className="h-[22px] w-auto dark:brightness-0 dark:invert"
+          />
         </Link>
 
         {!isSupplier && (
@@ -115,28 +127,12 @@ export function Navbar() {
           </nav>
         )}
 
-        {isSupplier && (
-          <nav className="ml-4 hidden items-center gap-1 lg:flex">
-            <Link
-              href="/supplier"
-              className="rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/supplier/products"
-              className="rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-            >
-              Inventory
-            </Link>
-            <Link
-              href="/supplier/orders"
-              className="rounded-lg px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
-            >
-              Orders
-            </Link>
-          </nav>
-        )}
+        {/*
+         * No supplier nav here on desktop: the console's own tab bar carries the
+         * same links one row below, with an active state this row cannot show.
+         * The mobile menu below still lists them, since that tab bar is the only
+         * navigation once the header collapses.
+         */}
 
         {!isSupplier && (
           <form onSubmit={submitSearch} className="ml-auto hidden max-w-md flex-1 md:block">
@@ -153,7 +149,10 @@ export function Navbar() {
           </form>
         )}
 
-        <div className={cn("flex items-center gap-1", isSupplier && "ml-auto")}>
+        {/* `ml-auto` unconditionally: the search form only claims the middle of
+            the row from `md` up, so without it these actions sat against the
+            logo on phones instead of the right edge. */}
+        <div className="ml-auto flex items-center gap-1">
           <ThemeToggle className="hidden sm:inline-flex" />
 
           {!isSupplier && (
