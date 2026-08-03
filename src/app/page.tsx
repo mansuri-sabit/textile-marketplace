@@ -4,13 +4,19 @@ import {
   ArrowRight,
   BadgeCheck,
   Boxes,
+  Check,
   Grid2x2,
   Layers,
   MapPin,
   Ruler,
+  Store,
   Truck,
   Users,
 } from "lucide-react";
+import {
+  BestsellerCarousel,
+  type Bestseller,
+} from "@/components/buyer/BestsellerCarousel";
 import { ProductCard } from "@/components/buyer/ProductCard";
 import { HeroSearch } from "@/components/buyer/HeroSearch";
 import { Badge, LinkButton, SectionHeading } from "@/components/ui";
@@ -38,30 +44,80 @@ type HomeSupplier = {
 type HomeData = {
   featured: ProductCardType[];
   newest: ProductCardType[];
+  bestsellers: Bestseller[];
   suppliers: HomeSupplier[];
   stats: { productCount: number; supplierCount: number };
   categories: Array<{ name: string; count: number; image: string }>;
 };
 
+/** Raw shape of the bestseller query, before the tier maths. */
+type BestsellerRow = {
+  _id: unknown;
+  name: string;
+  slug: string;
+  images: string[];
+  unit: string;
+  pricePerUnit: number;
+  bulkTiers?: Array<{ minQuantity: number; pricePerUnit: number }>;
+};
+
+/**
+ * Ranks by `orderCount` — what buyers actually reordered — with rating as the
+ * tie-break, and reports each fabric's cheapest volume tier as its saving. Out
+ * of stock listings are excluded: a bestseller nobody can buy is an ad for a
+ * dead end.
+ */
+function toBestseller(row: BestsellerRow): Bestseller {
+  const cheapest = (row.bulkTiers ?? [])
+    .filter((tier) => tier.pricePerUnit < row.pricePerUnit)
+    .sort((a, b) => a.pricePerUnit - b.pricePerUnit)[0];
+
+  return {
+    _id: String(row._id),
+    name: row.name,
+    slug: row.slug,
+    image: row.images[0] ?? "",
+    unit: row.unit,
+    pricePerUnit: row.pricePerUnit,
+    bestPricePerUnit: cheapest?.pricePerUnit ?? row.pricePerUnit,
+    bestPriceQuantity: cheapest?.minQuantity ?? 0,
+    discountPercent: cheapest
+      ? Math.round((1 - cheapest.pricePerUnit / row.pricePerUnit) * 100)
+      : 0,
+  };
+}
+
 async function getHomeData(): Promise<HomeData> {
   await connectDB();
 
-  const [featured, newest, suppliers, productCount, supplierCount, categoryCounts] =
-    await Promise.all([
-      listProducts(productQuerySchema.parse({ featured: "true", limit: "8" })),
-      listProducts(productQuerySchema.parse({ sort: "newest", limit: "4" })),
-      SupplierProfile.find({ verified: true })
-        .select("businessName slug address.city address.state categories rating")
-        .sort({ rating: -1 })
-        .limit(6)
-        .lean(),
-      Product.countDocuments({ status: { $in: ["active", "out_of_stock"] } }),
-      SupplierProfile.countDocuments(),
-      Product.aggregate<{ _id: string; count: number }>([
-        { $match: { status: { $in: ["active", "out_of_stock"] } } },
-        { $group: { _id: "$category", count: { $sum: 1 } } },
-      ]),
-    ]);
+  const [
+    featured,
+    newest,
+    bestsellerRows,
+    suppliers,
+    productCount,
+    supplierCount,
+    categoryCounts,
+  ] = await Promise.all([
+    listProducts(productQuerySchema.parse({ featured: "true", limit: "8" })),
+    listProducts(productQuerySchema.parse({ sort: "newest", limit: "4" })),
+    Product.find({ status: "active", "images.0": { $exists: true } })
+      .select("name slug images unit pricePerUnit bulkTiers")
+      .sort({ orderCount: -1, rating: -1 })
+      .limit(10)
+      .lean<BestsellerRow[]>(),
+    SupplierProfile.find({ verified: true })
+      .select("businessName slug address.city address.state categories rating")
+      .sort({ rating: -1 })
+      .limit(6)
+      .lean(),
+    Product.countDocuments({ status: { $in: ["active", "out_of_stock"] } }),
+    SupplierProfile.countDocuments(),
+    Product.aggregate<{ _id: string; count: number }>([
+      { $match: { status: { $in: ["active", "out_of_stock"] } } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+    ]),
+  ]);
 
   // One representative image per category, so the tiles are photographic
   // rather than a wall of coloured rectangles.
@@ -76,6 +132,7 @@ async function getHomeData(): Promise<HomeData> {
   return serialize<HomeData>({
     featured: featured.products,
     newest: newest.products,
+    bestsellers: bestsellerRows.map(toBestseller),
     suppliers,
     stats: { productCount, supplierCount },
     categories: PRODUCT_CATEGORIES.map((name) => ({
@@ -87,7 +144,8 @@ async function getHomeData(): Promise<HomeData> {
 }
 
 export default async function HomePage() {
-  const { featured, newest, suppliers, stats, categories } = await getHomeData();
+  const { featured, newest, bestsellers, suppliers, stats, categories } =
+    await getHomeData();
 
   return (
     <>
@@ -144,17 +202,9 @@ export default async function HomePage() {
               <HeroSearch />
             </div>
 
-            {/* Mobile gets the photograph as a band rather than losing it —
-                it is what tells you this is a fabric marketplace. */}
-            <div className="relative mt-10 aspect-[16/9] overflow-hidden rounded-card lg:hidden">
-              <Image
-                src="/hero-fabrics.jpg"
-                alt=""
-                fill
-                sizes="100vw"
-                className="object-cover"
-              />
-            </div>
+            {/* The hero photograph is desktop-only. On phones and tablets it
+                pushed the search box and the stats below the fold, and the
+                catalog itself is the better first impression there. */}
 
             <dl className="mt-10 grid grid-cols-3 divide-x divide-line rounded-card border border-line bg-surface/70 backdrop-blur-sm">
               {[
@@ -193,6 +243,27 @@ export default async function HomePage() {
               ))}
             </dl>
           </div>
+        </div>
+      </section>
+
+      {/*
+        Straight after the hero, because it is the first thing a buyer landing
+        cold can act on — a centred heading rather than the usual left-aligned
+        SectionHeading, since the strip below it is full-width and symmetrical.
+      */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <h2 className="font-display text-3xl text-ink sm:text-[40px]">
+            Our Bestselling Products
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-muted">
+            The qualities buyers reorder most, each shown with the volume price
+            it unlocks.
+          </p>
+        </div>
+
+        <div className="mt-10">
+          <BestsellerCarousel products={bestsellers} />
         </div>
       </section>
 
@@ -335,20 +406,95 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/*
+        The supplier pitch, closing the page the buyer journey opened.
+        Left-aligned against a photograph rather than centred in an empty box:
+        this is the one place on the homepage asking someone to sign up, and it
+        has to carry as much weight as the catalog above it. Built on the
+        indigo-50/900 pair because both flip with the theme — a fixed dark panel
+        would need every colour restated for dark mode.
+      */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-card border border-indigo-200 bg-indigo-50 px-6 py-12 text-center sm:px-12">
-          <h2 className="font-display text-3xl text-indigo-900">Sell on TextileMart</h2>
-          <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-indigo-600">
-            List your qualities, manage stock and take orders from brands sourcing
-            directly. Setting up takes a few minutes.
-          </p>
-          <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <LinkButton href="/register?role=supplier" size="lg">
-              List your business
-            </LinkButton>
-            <LinkButton href="/suppliers" variant="secondary" size="lg">
-              See who sells here
-            </LinkButton>
+        <div className="relative overflow-hidden rounded-card border border-indigo-200 bg-indigo-50">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 hidden w-[46%] lg:block"
+          >
+            <Image
+              src="/auth-panel-fabrics.webp"
+              alt=""
+              fill
+              sizes="46vw"
+              className="object-cover"
+            />
+            {/* Fades the photograph into the panel so the copy keeps its
+                contrast without a scrim laid over the whole image. */}
+            <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-indigo-50/55 to-transparent" />
+            <div className="absolute inset-0 bg-indigo-50/25" />
+          </div>
+
+          <div className="relative px-6 py-12 sm:px-10 sm:py-14 lg:max-w-[58%] lg:py-16">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-indigo-600">
+              <Store className="size-3" />
+              For mills &amp; collectives
+            </span>
+
+            <h2 className="mt-5 font-display text-3xl leading-tight text-indigo-900 sm:text-[40px]">
+              Sell on TextileMart
+            </h2>
+
+            <p className="mt-4 max-w-lg text-sm leading-relaxed text-indigo-600 sm:text-base">
+              List your qualities once and take orders from brands sourcing
+              directly &mdash; no enquiry forms, no middlemen. Setting up takes a
+              few minutes.
+            </p>
+
+            <ul className="mt-8 grid gap-3.5 sm:max-w-lg">
+              {[
+                {
+                  title: "List in minutes",
+                  body: "Composition, GSM, weave, photos and bulk tiers on every listing.",
+                },
+                {
+                  title: "Orders, not enquiries",
+                  body: "A mixed cart splits by supplier, so you only ever see your own lines.",
+                },
+                {
+                  title: "Your stock, your terms",
+                  body: "Price, stock and order status stay under your control in one console.",
+                },
+              ].map((point) => (
+                <li key={point.title} className="flex gap-3">
+                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-indigo-600 text-white dark:bg-indigo-500 dark:text-indigo-50">
+                    <Check className="size-3" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-indigo-900">
+                      {point.title}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] leading-relaxed text-indigo-600">
+                      {point.body}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-9 flex flex-wrap gap-3">
+              <LinkButton href="/register?role=supplier" size="lg">
+                List your business
+                <ArrowRight className="size-4" />
+              </LinkButton>
+              <LinkButton href="/suppliers" variant="secondary" size="lg">
+                See who sells here
+              </LinkButton>
+            </div>
+
+            <p className="mt-6 flex items-center gap-1.5 text-xs text-indigo-600/80">
+              <BadgeCheck className="size-3.5 shrink-0" />
+              {stats.supplierCount} verified suppliers already listing{" "}
+              {formatCompact(stats.productCount)} fabrics.
+            </p>
           </div>
         </div>
       </section>
