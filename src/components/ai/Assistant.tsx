@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Check,
@@ -222,12 +223,18 @@ export function Assistant() {
       aria-label="Sourcing assistant"
     >
       <div className="flex h-[85vh] w-full flex-col overflow-hidden rounded-t-card border border-line bg-surface shadow-raised sm:h-[600px] sm:w-[420px] sm:rounded-card">
-        <header className="flex items-center gap-3 bg-indigo-600 px-4 py-3.5 dark:bg-indigo-900">
+        {/*
+          The indigo scale inverts in dark mode, so the high numbers are the
+          light end there — `dark:bg-indigo-900` rendered a near-white header
+          under white text. `indigo-100` is the deep navy in dark, which keeps
+          the header reading as a header at both themes.
+        */}
+        <header className="flex items-center gap-3 bg-indigo-600 px-4 py-3.5 dark:bg-indigo-100">
           <span className="relative shrink-0">
             <AssistantAvatar className="size-10" ring />
             {/* Online dot, as on the reference designs — the assistant is
                 always available, and saying so sets the expectation. */}
-            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-indigo-600 bg-moss-500 dark:border-indigo-900" />
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-indigo-600 bg-moss-500 dark:border-indigo-100" />
           </span>
 
           <div className="min-w-0 flex-1">
@@ -559,6 +566,10 @@ function ActionReceipt({
  * leads; the compare toggle sits on the image rather than stealing a row of
  * text. Selecting for comparison must not navigate, hence a button over the
  * link rather than inside it.
+ *
+ * The add button goes through the same `cart` store as the product page, so MOQ
+ * and stock are re-checked server-side exactly as they are there — the tile
+ * cannot become a second, looser way into the cart.
  */
 function ProductTile({
   product,
@@ -569,8 +580,44 @@ function ProductTile({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const router = useRouter();
   const close = useAssistant((s) => s.close);
+  const user = useSession((s) => s.user);
+  const add = useCart((s) => s.add);
+  const pending = useCart((s) => s.pending) === product._id;
+
+  const [added, setAdded] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
   const image = product.images?.[0];
+  const soldOut =
+    product.stock === 0 || product.stock < product.minimumOrderQuantity;
+
+  async function addToCart() {
+    setAddError(null);
+
+    if (!user) {
+      // Nothing on this card lets the buyer pick a quantity, so send them to
+      // the full product page rather than back to a panel they must reopen.
+      close();
+      router.push(
+        `/login?next=${encodeURIComponent(`/products/${product.slug}`)}`,
+      );
+      return;
+    }
+
+    try {
+      // MOQ is the smallest quantity the server accepts, which makes it the
+      // only sensible default for a one-tap add from a card this small.
+      await add(product._id, product.minimumOrderQuantity);
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2500);
+    } catch (err) {
+      setAddError(
+        err instanceof ApiError ? err.message : "Could not add this to your cart.",
+      );
+    }
+  }
 
   return (
     <div
@@ -592,7 +639,7 @@ function ProductTile({
           )}
         </span>
 
-        <span className="block p-2">
+        <span className="block px-2 pb-1.5 pt-2">
           <span className="line-clamp-2 block text-[11px] font-medium leading-snug text-ink">
             {product.name}
           </span>
@@ -606,6 +653,43 @@ function ProductTile({
           </span>
         </span>
       </Link>
+
+      <div className="px-2 pb-2">
+        <button
+          type="button"
+          onClick={addToCart}
+          disabled={soldOut || pending}
+          aria-label={`Add ${product.minimumOrderQuantity} ${product.unit} of ${product.name} to your cart`}
+          className={cn(
+            "flex h-7 w-full items-center justify-center gap-1 rounded-md text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            added
+              ? "bg-moss-50 text-moss-600"
+              : "bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:text-indigo-50 dark:hover:bg-indigo-400",
+          )}
+        >
+          {added ? (
+            <>
+              <Check className="size-3 shrink-0" />
+              Added
+            </>
+          ) : (
+            <>
+              <ShoppingCart className="size-3 shrink-0" />
+              {soldOut
+                ? "Out of stock"
+                : pending
+                  ? "Adding…"
+                  : `Add ${product.minimumOrderQuantity} ${product.unit}`}
+            </>
+          )}
+        </button>
+
+        {addError && (
+          <p role="alert" className="mt-1 text-[10px] leading-snug text-rose-500">
+            {addError}
+          </p>
+        )}
+      </div>
 
       <button
         type="button"
