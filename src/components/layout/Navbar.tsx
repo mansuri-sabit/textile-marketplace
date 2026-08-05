@@ -219,25 +219,25 @@ export function Navbar() {
                   <div className="p-1.5">
                     {isSupplier ? (
                       <>
-                        <MenuLink href="/supplier" icon={<LayoutDashboard className="size-4" />}>
+                        <MenuLink href="/supplier" icon={<LayoutDashboard className="size-4" />} onClick={() => setMenuOpen(false)}>
                           Dashboard
                         </MenuLink>
-                        <MenuLink href="/supplier/products" icon={<Package className="size-4" />}>
+                        <MenuLink href="/supplier/products" icon={<Package className="size-4" />} onClick={() => setMenuOpen(false)}>
                           Inventory
                         </MenuLink>
-                        <MenuLink href="/supplier/profile" icon={<Store className="size-4" />}>
+                        <MenuLink href="/supplier/profile" icon={<Store className="size-4" />} onClick={() => setMenuOpen(false)}>
                           Business profile
                         </MenuLink>
                       </>
                     ) : (
                       <>
-                        <MenuLink href="/buyer" icon={<LayoutDashboard className="size-4" />}>
+                        <MenuLink href="/buyer" icon={<LayoutDashboard className="size-4" />} onClick={() => setMenuOpen(false)}>
                           Dashboard
                         </MenuLink>
-                        <MenuLink href="/orders" icon={<Package className="size-4" />}>
+                        <MenuLink href="/orders" icon={<Package className="size-4" />} onClick={() => setMenuOpen(false)}>
                           My orders
                         </MenuLink>
-                        <MenuLink href="/buyer/profile" icon={<User className="size-4" />}>
+                        <MenuLink href="/buyer/profile" icon={<User className="size-4" />} onClick={() => setMenuOpen(false)}>
                           Profile
                         </MenuLink>
                       </>
@@ -314,16 +314,19 @@ export function Navbar() {
 function MenuLink({
   href,
   icon,
+  onClick,
   children,
 }: {
   href: string;
   icon: React.ReactNode;
+  onClick?: () => void;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
       role="menuitem"
+      onClick={onClick}
       className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-ink-muted transition-colors hover:bg-raised hover:text-ink"
     >
       {icon}

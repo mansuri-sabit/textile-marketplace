@@ -146,6 +146,9 @@ productSchema.index({ name: "text", description: "text", tags: "text" });
 // Drives the default grid: active products filtered by category, newest first.
 productSchema.index({ status: 1, category: 1, createdAt: -1 });
 productSchema.index({ status: 1, pricePerUnit: 1 });
+// Fast supplier inventory listing and status filter
+productSchema.index({ supplier: 1, updatedAt: -1 });
+productSchema.index({ supplier: 1, status: 1 });
 
 productSchema.virtual("isLowStock").get(function () {
   return this.stock > 0 && this.stock <= LOW_STOCK_THRESHOLD;
