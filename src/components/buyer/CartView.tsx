@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Minus,
   Plus,
+  ShieldCheck,
   ShoppingBag,
   Store,
   Trash2,
@@ -320,9 +321,14 @@ function OrderSummary() {
           </LinkButton>
         )}
 
-        <div className="mt-4 flex items-center justify-center gap-2 text-xs text-ink-subtle">
-          <Badge tone="moss">No payment needed</Badge>
-          <span>Suppliers confirm before dispatch</span>
+        <div className="mt-4 flex flex-col items-center justify-center gap-1.5 text-center">
+          <Badge tone="moss" className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs">
+            <ShieldCheck className="size-3.5 text-moss-600" />
+            <span>No payment needed</span>
+          </Badge>
+          <p className="text-[11px] leading-tight text-ink-subtle">
+            Suppliers confirm before dispatch
+          </p>
         </div>
       </div>
 
